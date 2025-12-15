@@ -9,7 +9,6 @@ description = ''
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-keywords = []
 authors = [
   { name = "Marie Aubert", email = "m.aubert@ip2i.in2p3.fr" },
 ]
@@ -26,8 +25,8 @@ dependencies = [
   "h5py", 
   "scipy"]
 
-readme = "README.md"
-
 [project.urls]
 Source = "https://github.com/m-aubert/mercupix"
 
+[tool.setuptools.packages.find]
+where = ["."]
