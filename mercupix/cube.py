@@ -109,11 +109,7 @@ class Ramp :
         ud_refpix = get_refpix_ud(ud_refpix,self.nframes, self.channel, self.npix_channel, 
                                   npix_ref=npix_ref)    
 
-        lr_refpix = np.concatenate([(self.datacube-ud_refpix[:,None,:])[:,4:-4,:4], 
-                                    (self.datacube-ud_refpix[:,None,:])[:,4:-4,-4:]], 
-                                     axis=2).mean(axis=2)
-        
-        lr_refpix = get_refpix_lr(lr_refpix, self.npix_channel, 
+        lr_refpix = get_refpix_lr(self.datacube-ud_refpix[:,None,:], self.npix_channel, 
                                   polyorder=3, red_fac=0.875)    
             
         self.refpix_map = ud_refpix[:,None,:]+lr_refpix[:,:,None]
