@@ -215,7 +215,7 @@ class Ramp :
         plt.colorbar(dp, ax=ax, shrink=0.4)
         return fig
 
-    def show_ramp(self, pixel_num=0,  fig=None, ax=None, corr_refpix=False):
+    def show_pixramp(self, pixel_num=0,  fig=None, ax=None, corr_refpix=False):
         if fig is None and ax is None : 
             fig, ax = plt.subplots()
         if ax is None and fig is not None : 
@@ -224,9 +224,9 @@ class Ramp :
         pixel_num = np.atleast_1d(pixel_num)
             
         if not corr_refpix : 
-            frame_ = self.datacube.reshape(self.datacube.shape[0], -1)[pixel_num]
+            frame_ = self.datacube.reshape(self.datacube.shape[0], -1)[:, pixel_num]
         else : 
-            frame_ = self.corr_refpix.reshape(self.datacube.shape[0], -1)[pixel_num]
+            frame_ = self.corr_refpix.reshape(self.datacube.shape[0], -1)[:, pixel_num]
 
         dp = ax.plot(self.t_read, frame_)
         return fig 
@@ -237,12 +237,12 @@ class RawRamp(Ramp):
         
     def get_hotpix(self):
         # Boolean
-        pass
+        return True
     
-    def down_pix(self):
+    def get_down_pix(self):
         # From external data - disconnected pixel map or else ?
         # Boolean
-        pass 
+        return True 
     
     def flag_persistence(self): 
         pass        
@@ -271,12 +271,13 @@ class RawRamp(Ramp):
         #missing refpix corrections. Should change shape ?
         # Should keep refpix and store as well ? 
         
+        datacube = self.corr_refpix() #Temp just to make func return something.
         self.subtract_offset()
         self.corr_nl() # Prob not here 
         self.corr_ipc() # Prob not here 
         self.corr_bfe() # Prob not here
         self.corr_dark() #Unclear if here. 
-        datacube = self.linearize_ramp() # Unclear if relevant to be done here.
+        self.linearize_ramp() # Unclear if relevant to be done here.
         return datacube  
     
   

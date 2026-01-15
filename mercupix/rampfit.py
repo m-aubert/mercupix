@@ -24,7 +24,7 @@ def get_ramp_fit(Ramp, fit_procedure='LSQ', fit_args={},  **kwargs):
 
     Returns:
         ndarray : fitted slope
-    """    
+    """        
     if fit_procedure == 'LSQ': 
         Fitter = LSQFit(Ramp.raw_to_calib(), Ramp.t_read,  **kwargs)
     elif fit_procedure == 'Kubik': 
@@ -51,7 +51,7 @@ class LSQFit:
     """
     Uses least-square methods to evaluate flux.
     """
-    def __init__(self, ramp, tarr, polytype=3):
+    def __init__(self, ramp, tarr, polytype='leg'):
         self.cube = ramp
         self.polytype = polytype
         self.tarr = tarr
