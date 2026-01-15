@@ -128,54 +128,7 @@ class Kubik2015 :
 
     def fit(self, fe=1, readnoise=10):
         return self.estim_f(fe, readnoise) 
-        
-class GroupImg : 
-    def __init__(self, data, time, readnoise): 
-        self.readnoise = readnoise
-        self.datai = data.mean(axis=0) #Assume (Nframes, Npix, Npix)
-        self.ti = time.mean(axis=0) #Assumes (Nframes, ti)
-        self.Ni = data.shape[0]
-        self.taui  = np.sum( [ (2*self.Ni - 2*i + 1)*tk for i, tk in enumerate(time)])        
-        self.taui *=1/self.Ni**2
-        self.vari = self.readnoise**2/self.Ni    
-    
-class GroupDiff:
-    def __init__(self, gp_list, add_reset=True): #Assume ordered gp_list
-        #gp_list should be list of gp image.
-        
-        self.diffgp = np.diff(list(map(lambda x : x.datai, gp_list)), axis=0)
-        self.ti = np.asarray(list(map(lambda x : x.ti, gp_list)))
-        self.diffti = np.diff(self.ti)
-        self.Nis = np.asarray(list(map(lambda x : x.Ni, gp_list)))
-        self.tauis = np.asarray(list(map(lambda x : x.taui, gp_list)))
-        self.vari = np.asarray(list(map(lambda x : x.vari, gp_list)))
-
-        print(len(self.diffti), len(self.vari))
-
-        self.reset = add_reset
-        
-        if add_reset : 
-            self.diffgp = np.append(np.array([gp_list[0].datai/self.ti[0]]), self.diffgp, axis=0)
             
-
-    def get_covar(self, a, reset=False) : 
-        # Only returns diag value for now. No need to use mem for no reason.
-        # Plus sparse matrix here.
-        alpha_diag = (self.vari[1:]+self.vari[:-1])/self.diffti**2  
-        alpha_diag += a/self.diffti**2 * (self.tauis[1:]+self.tauis[:-1] - 2*self.ti[:-1])
-
-        beta_diag = (-self.vari[1:-1])/(self.diffti[1:]*self.diffti[:-1])
-        beta_diag += a/(self.diffti[1:]*self.diffti[:-1]) * ( self.ti[1:-1] -self.tauis[1:-1])
-        
-        if self.reset : 
-            a0 = (self.vari[0] + a*self.tauis[0])/ self.ti[0]**2
-            b0 = (self.vari[0] + a*(self.ti[0] - self.tauis[0]))/(self.ti[0]*self.diffti[0])
-            alpha_diag = np.append(np.array([a0]), alpha_diag)
-            beta_diag = np.append(np.array([b0]), beta_diag)
-            
-        return alpha_diag, beta_diag
-    
-    
 class Brandt2024:    
     """
         Method to fit flux based on Brandt 2024. Assumes data are grouped.
