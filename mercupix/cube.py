@@ -239,7 +239,7 @@ class RawRamp(Ramp):
         # Boolean
         return True
     
-    def get_down_pix(self):
+    def get_downpix(self):
         # From external data - disconnected pixel map or else ?
         # Boolean
         return True 
