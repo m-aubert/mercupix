@@ -77,7 +77,7 @@ class LSQFit:
         x = self.poly_(deg=deg, leg=(self.polytype=='leg'))
         self.no_w_lstq(x, self.cube) 
         
-        if self.poly_ == 'leg': 
+        if self.polytype == 'leg': 
             self.coeffs[1]*=2/self.tarr.max()
             
         if return_slope:  
@@ -137,7 +137,7 @@ class Brandt2024:
                  add_reset=False, countrateguess=None, group_info=None):
         
         self.readnoise = np.atleast_1d(readnoise)     
-        self.datai = data
+        self.datai = np.diff(data,axis=0)
         self.ti = timegroup
         self.Nis = group_info['nframe'] # Array of Nframes / group
         self.tauis = np.sum( [ (2*ni- 2*i + 1)*tk for i, (ni,tk) in enumerate(zip(self.Nis, timeframe))])     
@@ -192,7 +192,7 @@ class Brandt2024:
     def get_countrate_nointercept(self, return_qf = True):
                  
         B = np.sum(self.diffd * self.sign[:,None] / self.theta[-1] * (self.phi[1:]*self.Theta+ self.theta[:-1]*self.Phi), axis=0)        
-        C = np.sum( self.sign[:,None]/self.theta[-1] * (self.phi[1:]*self.Theta+self.theta[:-1]*self.Phi), axis=0)
+        C = np.sum(self.sign[:,None]/self.theta[-1] * (self.phi[1:]*self.Theta+self.theta[:-1]*self.Phi), axis=0)
 
         a = B/C
         a_err = 1./C
