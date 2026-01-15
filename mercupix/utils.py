@@ -2,7 +2,7 @@
 import numpy as np
 from scipy.signal import savgol_filter
 
-def refpix_ud(ud_refpix,nframes, nchannel, npix_channel, npix_ref=8):    
+def get_refpix_ud(ud_refpix,nframes, nchannel, npix_channel, npix_ref=8):    
     """ Method to estimate the Up-Down reference pixel correction.
 
     Args:
@@ -21,7 +21,7 @@ def refpix_ud(ud_refpix,nframes, nchannel, npix_channel, npix_ref=8):
     
     return ud_corr
     
-def refpix_lr(lr_refpix, npix_channel, polyorder=3, red_fac=0.875):    
+def get_refpix_lr(lr_refpix, npix_channel, polyorder=3, red_fac=0.875):    
     """ Method to estimate the Left-Right reference pixel correction.
 
     Args:

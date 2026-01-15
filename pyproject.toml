@@ -28,5 +28,5 @@ dependencies = [
 [project.urls]
 Source = "https://github.com/m-aubert/mercupix"
 
-[tool.setuptools.packages.find]
-where = ["."]
+[tool.setuptools]
+package-dir = {"" = "."}
