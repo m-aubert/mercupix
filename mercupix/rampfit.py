@@ -89,16 +89,16 @@ class Kubik2015 :
     """
     Method based on Kubik2016 to estimate flux from group-difference images
     """
-    def __init__(self,ramp, tpf, macc=None):
+    def __init__(self,ramp, t_frame, macc=None):
         self.diff = np.diff(ramp, axis=0)
-        self.tpf = tpf
+        self.tpf = t_frame
         if macc is not None : 
             self.ng, self.nf, self.nd =macc
         else :
             self.ng = ramp.shape[0]
             self.nf = 1
             self.nd = 0
-        
+
     @property
     def alpha(self): 
         return (1-self.nf**2)/(3*self.nf+self.nd)
@@ -111,19 +111,18 @@ class Kubik2015 :
         beta_ = self.beta(sigma_r, fe)
 
         term = (1+alpha_)/2*fe
-        term *= np.sqrt(1 + 4*fe**2 * np.sum( (self.diff + beta_)**2) / 
+        term *= np.sqrt(1 + 4*fe**2 * np.sum( (self.diff + beta_)**2, axis=0) / 
                         ((self.ng+1)*(alpha_+1)**2 )) - 1
         term -= beta_
-        
         return term
     
     def estim_sigf(self,sigma_r, fe):
         alpha_ = self.alpha
         beta_ = self.beta(sigma_r,fe)
         g_ = self.estim_f(fe, sigma_r)
-        term  = 2*(g_+beta_)**2 / ((self.ng-1)*
+        term  = 2*(g_+beta_)**2 /  ((self.ng-1)*
                                     (1+2*fe/(1+alpha_) * 
-                                     (g_+beta_)))
+                                     (g+beta_)))
         
         return term
 
