@@ -147,9 +147,7 @@ class Brandt2024:
         self.diffgp = np.diff(data,axis=0)
         
         self.reset = add_reset                            
-                
-        self.alpha, self.beta = self.get_covar(countrateguess, reset=add_reset)
-        
+                    
         if self.reset : 
             self.diffgp = np.append(np.array([self.datai[0]/self.ti[0]]), self.diffgp, axis=0)
             self.diffti = np.append(np.array([self.ti[0]]) , self.diffti, axis=0)
@@ -165,6 +163,8 @@ class Brandt2024:
                 countrateguess = self.diffd[1:].sum(axis=0)
             else : 
                 countrateguess = self.diffd.sum(axis=0)
+                
+        self.alpha, self.beta = self.get_covar(countrateguess)
                 
     def fit(self, **kwargs): 
         if self.reset :
