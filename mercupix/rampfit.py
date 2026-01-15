@@ -10,10 +10,30 @@ This document will probably list all estimator usable for flux.
 Shall now create high-level class that should call the estimator of interest. 
 
 """
-
-
 import numpy as np
 from scipy.special import legendre, hermitenorm
+
+
+def get_ramp_fit(Ramp, fit_procedure='LSQ', fit_args={},  **kwargs): 
+    """High-level method to estimate fit.
+
+    Args:
+        Ramp (class): _description_
+        fit_procedure (str, optional): Refers to the method used for fitting. \ 
+                                        Can be 'LSQ', 'Kubik', 'Brandt'. Defaults to 'LSQ'.
+
+    Returns:
+        ndarray : fitted slope
+    """    
+    if fit_procedure == 'LSQ': 
+        Fitter = LSQFit(Ramp.raw_to_calib(), Ramp.t_read,  **kwargs)
+    elif fit_procedure == 'Kubik': 
+        Fitter = Kubik2015(Ramp.raw_to_calib(), np.diff(Ramp.t_read)[0], **kwargs)
+    elif fit_procedure == 'Brandt': 
+        Fitter = Brandt2024(Ramp.raw_to_calib(), timeframe=Ramp.t_read, timegroup=Ramp.t_gread, **kwargs)
+        
+    slope = Fitter.fit(**fit_args)
+    return slope 
 
 def poly_(x,deg=1, poly='mono'):
     if poly == "leg" : 
@@ -27,12 +47,12 @@ def poly_(x,deg=1, poly='mono'):
     return pol.astype(np.float32)
     
 
-class Rampfit: 
+class LSQFit: 
     """
-    Should be a class dedicated to fitting stuff. Will see how this goes I guess. 
+    Uses least-square methods to evaluate flux.
     """
-    def __init__(self, cube, polytype, tarr):
-        self.cube = cube
+    def __init__(self, ramp, tarr, polytype=3):
+        self.cube = ramp
         self.polytype = polytype
         self.tarr = tarr
         if self.polytype == 'leg':
@@ -53,42 +73,24 @@ class Rampfit:
         cube = cube.reshape(cube.shape[0], -1).astype(np.float32)
         self.coeffs = np.linalg.lstsq(x.T, cube, rcond=None)[0]
 
-    def fit(self, deg=1):
+    def fit(self, deg=1, return_slope=True):
         x = self.poly_(deg=deg, leg=(self.polytype=='leg'))
         self.no_w_lstq(x, self.cube) 
-        return self.coeffs
         
-    
-class SinglePixelRamp:
-        def __init__(self, pixramp, tread):
-             self.pixramp = pixramp
-             self.tread = tread
-
-        def linearize_single_pixel(self, coef, deg=3, poly='mono'): 
-            lin_meas = 1 - self.pixramp / np.sum(poly_(self.t_read, deg=1, poly='mono').T*coef[:2], axis=1)
-            coef_lin = np.linalg.lstsq(poly_(self.pixramp, deg=deg, poly='mono').T, lin_meas.astype(np.float32), rcond=None)[0]
-            pixlin = self.pixramp * (1+(coef_lin[:,None]*poly_(self.pixramp, deg=deg, poly='mono')).sum(axis=0))
-            return pixlin 
-        
-        def ramp_lstq(self, ramp, deg=1, poly='mono'):
-            if poly == 'leg': 
-                x= 2/self.tread[-1]*self.tread - 1.
-            else: 
-                x = self.tread
-            x = poly_(x, deg=deg, poly=poly)
-            coefs = np.linalg.lstsq(x.T, ramp, rcond=None)[0]
-            return coefs
-        
-        def ramp_to_pixelflux(self, deg=1, poly='mono'):
-            coefs = self.ramp_lstq(deg=deg, poly=poly)
-            pixlin = self.linearize_single_pixel(coefs, deg=deg, poly=poly)
-            coef_lin = self.ramp_lstq(pixlin,deg=1, poly='mono')
-            return coef_lin
-        
+        if self.poly_ == 'leg': 
+            self.coeffs[1]*=2/self.tarr.max()
+            
+        if return_slope:  
+            return self.coeffs[1]
+        else:
+            return self.coeffs 
         
 class Kubik2015 : 
+    """
+    Method based on Kubik2016 to estimate flux from group-difference images
+    """
     def __init__(self,ramp, tpf, macc=None):
-        self.diff = np.diff(ramp)
+        self.diff = np.diff(ramp, axis=0)
         self.tpf = tpf
         if macc is not None : 
             self.ng, self.nf, self.nd =macc
@@ -97,6 +99,7 @@ class Kubik2015 :
             self.nf = 1
             self.nd = 0
         
+    @property
     def alpha(self): 
         return (1-self.nf**2)/(3*self.nf+self.nd)
     
@@ -124,7 +127,9 @@ class Kubik2015 :
         
         return term
 
-
+    def fit(self, fe=1, readnoise=10):
+        return self.estim_f(fe, readnoise) 
+        
 class GroupImg : 
     def __init__(self, data, time, readnoise): 
         self.readnoise = readnoise
@@ -172,66 +177,29 @@ class GroupDiff:
         return alpha_diag, beta_diag
     
     
-class GroupImg : 
-    def __init__(self, data, time, readnoise): 
-        self.readnoise = np.atleast_1d(readnoise)
-        self.datai = data.mean(axis=0) if data.ndim == 3 else data #Assume (Nframes, Npix, Npix)
-        self.ti = np.atleast_1d(time).mean(axis=0) #Assumes (Nframes, ti)
-        self.Ni = data.shape[0] if data.ndim == 3 else 1 
-        self.taui  = np.sum( [ (2*self.Ni - 2*i + 1)*tk for i, tk in enumerate(np.atleast_1d(time))])        
-        self.taui *=1/self.Ni**2
-        self.vari = self.readnoise**2/self.Ni    
-    
-class GroupDiff:
-    def __init__(self, gp_list, add_reset=True): #Assume ordered gp_list
-        #gp_list should be list of gp image.
+class Brandt2024:    
+    """
+        Method to fit flux based on Brandt 2024. Assumes data are grouped.
+    """
+    def __init__(self, data, readnoise=11, timeframe=None, timegroup=None, 
+                 add_reset=False, countrateguess=None, group_info=None):
         
-        self.diffgp = np.diff(list(map(lambda x : x.datai, gp_list)), axis=0)
-        self.ti = np.asarray(list(map(lambda x : x.ti, gp_list)))
+        self.readnoise = np.atleast_1d(readnoise)     
+        self.datai = data
+        self.ti = timegroup
+        self.Nis = group_info['nframe'] # Array of Nframes / group
+        self.tauis = np.sum( [ (2*ni- 2*i + 1)*tk for i, (ni,tk) in enumerate(zip(self.Nis, timeframe))])     
+        self.tauis *=1/self.Nis**2
+        self.vari = self.readnoise**2/self.Nis   
         self.diffti = np.diff(self.ti)
-        self.Nis = np.asarray(list(map(lambda x : x.Ni, gp_list)))
-        self.tauis = np.asarray(list(map(lambda x : x.taui, gp_list)))
-        self.vari = np.asarray(list(map(lambda x : x.vari, gp_list))).ravel()
-
-
-        print(self.diffgp.shape)
-        print(self.diffti.shape)
-
-        self.reset = add_reset
+        self.diffgp = np.diff(data,axis=0)
         
-        if add_reset : 
-            self.diffgp = np.append(np.array([gp_list[0].datai/self.ti[0]]), self.diffgp, axis=0)
-            
-
-    def get_covar(self, a, reset=False) : 
-        # Only returns diag value for now. No need to use mem for no reason.
-        # Plus sparse matrix here.
-        alpha_diag = (self.vari[1:]+self.vari[:-1])/self.diffti**2  
-        alpha_diag += a/self.diffti**2 * (self.tauis[1:]+self.tauis[:-1] - 2*self.ti[:-1])
-
-        beta_diag = (-self.vari[1:-1])/(self.diffti[1:]*self.diffti[:-1])
-        beta_diag += a/(self.diffti[1:]*self.diffti[:-1]) * ( self.ti[1:-1] -self.tauis[1:-1])
-        
-        if self.reset : 
-            a0 = (self.vari[0] + a*self.tauis[0])/ self.ti[0]**2
-            b0 = (self.vari[0] + a*(self.ti[0] - self.tauis[0]))/(self.ti[0]*self.diffti[0])
-            alpha_diag = np.append(np.array([a0]), alpha_diag)
-            beta_diag = np.append(np.array([b0]), beta_diag)
-            
-        return alpha_diag, beta_diag
-    
-    
-class Brandt2024(GroupDiff):
-    
-    def __init__(self, gp_list, add_reset=True, countrateguess=None,):            
-        super().__init__(gp_list, add_reset=add_reset)
-
-        if add_reset != self.reset :  # Not good, will change in the future most-likely
-            add_reset = self.reset
-
+        self.reset = add_reset                            
+                
         self.alpha, self.beta = self.get_covar(countrateguess, reset=add_reset)
         
         if self.reset : 
+            self.diffgp = np.append(np.array([self.datai[0]/self.ti[0]]), self.diffgp, axis=0)
             self.diffti = np.append(np.array([self.ti[0]]) , self.diffti, axis=0)
 
         self.diffd = (self.diffgp/self.diffti[:,None,None]).reshape(self.diffgp.shape[0], -1)
@@ -240,13 +208,34 @@ class Brandt2024(GroupDiff):
         self.npix = self.diffd.shape[-1]
         self.sign = ((-1)**np.arange(1,self.ndiff+1))
 
-        print(self.beta.shape, self.alpha.shape)
         if countrateguess is None : 
             if self.reset: 
                 countrateguess = self.diffd[1:].sum(axis=0)
             else : 
                 countrateguess = self.diffd.sum(axis=0)
+                
+    def fit(self, **kwargs): 
+        if self.reset :
+            return self.get_countrate_intercept(self, return_qf =True,**kwargs)[0]
+        else :
+            return self.get_countrate_nointercept(return_qf=False, **kwargs)[0]
 
+    def get_covar(self, a) : 
+        # Only returns diag value for now. No need to use mem for no reason.
+        # Plus sparse matrix here.
+        alpha_diag = (self.vari[1:]+self.vari[:-1])/self.diffti**2  
+        alpha_diag += a/self.diffti**2 * (self.tauis[1:]+self.tauis[:-1] - 2*self.ti[:-1])
+
+        beta_diag = (-self.vari[1:-1])/(self.diffti[1:]*self.diffti[:-1])
+        beta_diag += a/(self.diffti[1:]*self.diffti[:-1]) * ( self.ti[1:-1] -self.tauis[1:-1])
+        
+        if self.add_reset : 
+            a0 = (self.vari[0] + a*self.tauis[0])/ self.ti[0]**2
+            b0 = (self.vari[0] + a*(self.ti[0] - self.tauis[0]))/(self.ti[0]*self.diffti[0])
+            alpha_diag = np.append(np.array([a0]), alpha_diag)
+            beta_diag = np.append(np.array([b0]), beta_diag)
+            
+        return alpha_diag, beta_diag
         
     def get_countrate_nointercept(self, return_qf = True):
                  
@@ -261,11 +250,8 @@ class Brandt2024(GroupDiff):
             A += np.sum((self.diffd)**2 * self.theta[:-1] * self.phi[1:] / self.theta[-1], axis=0)
             chi2 = A - B**2/C
             
-            return a, a_err, chi2
-
-                                    
+            return a, a_err, chi2                                    
         return a,a_err
-        
         
     def get_countrate_intercept(self, return_qf = True, ktc_prior=None):
         
@@ -277,9 +263,6 @@ class Brandt2024(GroupDiff):
         else : 
             z_term1 = 0
             z_term2 = 0
-            
-    
-
         # Still in dev, for now merely copypaste of function above 
          
         B = np.sum(self.diffd * self.sign[:,None] / self.theta[-1] * (self.phi[1:]*self.Theta+ self.theta[:-1]*self.Phi), axis=0)        
@@ -288,15 +271,10 @@ class Brandt2024(GroupDiff):
         b = (self.Bp1 / self.ti[1] - self.Cp1*B / (C*self.ti[1]) + z_term1)
         b /= (self.C11/self.ti[1]**2 - self.Cp1**2/ (C*self.ti[1]) + z_term2) 
         
-
-        print(B.shape)
-        print(C.shape)
-        
         a = B/C - b*( self.Cp1*B / (C*self.ti[1]))
                 
         cov_ab = np.array([[C , self.Cp1 / self.ti[1]], [self.Cp1 / self.ti[1], self.C11/self.ti[1]**2 + z_term2]])
         #cov_ab = np.linalg.inv(cov_ab)
-        
         if return_qf:       
             A = 2*np.sum(self.diffd * self.sign[:,None]/self.theta[-1] * self.phi[1:] * self.ThetaD[:-1], axis=0)
             A += np.sum((self.diffd)**2 * self.theta[:-1] * self.phi[1:] / self.theta[-1], axis=0)
@@ -396,13 +374,102 @@ class Brandt2024(GroupDiff):
         return self._ThetaD
 
 class Casertano2022:
+    """
+        Method based on Casertano 2022 report for flux estimate.
+    """
     def __init__(self):
         pass
     
 
 class GenericLikelihoodBestfit :
+    """
+        In case we want to do some jax/other minimizations for linear
+    """
     def __init__(self):
         pass
         
         
+### Below : to delete after tests
+
+class GroupImg : 
+    """
+        Temporary function to define a grouped image and its informations.
+    """
+    def __init__(self, data, time, readnoise): 
+        self.readnoise = np.atleast_1d(readnoise)
+        self.datai = data.mean(axis=0) if data.ndim == 3 else data #Assume (Nframes, Npix, Npix)
+        self.ti = np.atleast_1d(time).mean(axis=0) #Assumes (Nframes, ti)
+        self.Ni = data.shape[0] if data.ndim == 3 else 1 
+        self.taui  = np.sum( [ (2*self.Ni - 2*i + 1)*tk for i, tk in enumerate(np.atleast_1d(time))])        
+        self.taui *=1/self.Ni**2
+        self.vari = self.readnoise**2/self.Ni    
+    
+class GroupDiff:
+    """
+        Temporary function to create a group difference array.
+    """
+    def __init__(self, gp_list, add_reset=False): #Assume ordered gp_list
+        #gp_list should be list of gp image.
+        
+        self.diffgp = np.diff(list(map(lambda x : x.datai, gp_list)), axis=0)
+        self.ti = np.asarray(list(map(lambda x : x.ti, gp_list)))
+        self.diffti = np.diff(self.ti)
+        self.Nis = np.asarray(list(map(lambda x : x.Ni, gp_list)))
+        self.tauis = np.asarray(list(map(lambda x : x.taui, gp_list)))
+        self.vari = np.asarray(list(map(lambda x : x.vari, gp_list))).ravel()
+
+        self.reset = add_reset
+        
+        if add_reset : 
+            self.diffgp = np.append(np.array([gp_list[0].datai/self.ti[0]]), self.diffgp, axis=0)
+            
+    def get_covar(self, a) : 
+        # Only returns diag value for now. No need to use mem for no reason.
+        # Plus sparse matrix here.
+        alpha_diag = (self.vari[1:]+self.vari[:-1])/self.diffti**2  
+        alpha_diag += a/self.diffti**2 * (self.tauis[1:]+self.tauis[:-1] - 2*self.ti[:-1])
+
+        beta_diag = (-self.vari[1:-1])/(self.diffti[1:]*self.diffti[:-1])
+        beta_diag += a/(self.diffti[1:]*self.diffti[:-1]) * ( self.ti[1:-1] -self.tauis[1:-1])
+        
+        if self.add_reset : 
+            a0 = (self.vari[0] + a*self.tauis[0])/ self.ti[0]**2
+            b0 = (self.vari[0] + a*(self.ti[0] - self.tauis[0]))/(self.ti[0]*self.diffti[0])
+            alpha_diag = np.append(np.array([a0]), alpha_diag)
+            beta_diag = np.append(np.array([b0]), beta_diag)
+            
+        return alpha_diag, beta_diag
+    
+    
+    
+class SinglePixelRamp:
+    """Dedicated to single pix processing.
+    Should include linearization procedure but this should probably be experimented on more.
+    Should also be included Ramp linearization part tbh.
+    """
+    def __init__(self, pixramp, tread):
+            self.pixramp = pixramp
+            self.tread = tread
+
+    def linearize_single_pixel(self, coef, deg=3, poly='mono'): 
+        lin_meas = 1 - self.pixramp / np.sum(poly_(self.t_read, deg=1, poly='mono').T*coef[:2], axis=1)
+        coef_lin = np.linalg.lstsq(poly_(self.pixramp, deg=deg, poly='mono').T, lin_meas.astype(np.float32), rcond=None)[0]
+        pixlin = self.pixramp * (1+(coef_lin[:,None]*poly_(self.pixramp, deg=deg, poly='mono')).sum(axis=0))
+        return pixlin 
+    
+    def ramp_lstq(self, ramp, deg=1, poly='mono'):
+        if poly == 'leg': 
+            x= 2/self.tread[-1]*self.tread - 1.
+        else: 
+            x = self.tread
+        x = poly_(x, deg=deg, poly=poly)
+        coefs = np.linalg.lstsq(x.T, ramp, rcond=None)[0]
+        return coefs
+    
+    def ramp_to_pixelflux(self, deg=1, poly='mono'):
+        coefs = self.ramp_lstq(deg=deg, poly=poly)
+        pixlin = self.linearize_single_pixel(coefs, deg=deg, poly=poly)
+        coef_lin = self.ramp_lstq(pixlin,deg=1, poly='mono')
+        return coef_lin
+    
         
