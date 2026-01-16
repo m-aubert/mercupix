@@ -196,7 +196,7 @@ class Ramp :
         if not corr_refpix : 
             frame_ = self.datacube[frame_num,:,:]
         else : 
-            frame_ = self.corr_refpix[frame_num,:,:]
+            frame_ = self.corr_refpix()[frame_num,:,:]
 
         vmin, vmax = np.percentile(frame_.ravel() , [1,99], **kwargs)
         
@@ -215,7 +215,7 @@ class Ramp :
         if not corr_refpix : 
             ramp_ = self.datacube.reshape(self.datacube.shape[0], -1)[:, pixel_num]
         else : 
-            ramp_ = self.corr_refpix.reshape(self.datacube.shape[0], -1)[:, pixel_num]
+            ramp_ = self.corr_refpix().reshape(self.datacube.shape[0], -1)[:, pixel_num]
 
         dp = ax.plot(self.t_read, ramp_, **kwargs)
         return fig 
