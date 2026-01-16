@@ -18,16 +18,19 @@ class Exposure:
     def _header(self):
         pass 
     
-    def show(self, fig=None, ax=None, **kwargs):
+    def show(self,data=None, fig=None, ax=None, **kwargs):
         if fig is None and ax is None : 
             fig, ax = plt.subplots()
         if ax is None and fig is not None : 
             ax = fig.add_subplot()
+            
+        if data is None : 
+            data = self.data 
 
-        vmin, vmax = np.percentile(self.data.ravel() , [1,99])
+        vmin, vmax = np.percentile(data.ravel() , [1,99])
         
-        dp = ax.imshow(self.data, vmin = vmin, vmax=vmax, **kwargs)
-        plt.colorbar(dp, ax=ax, shrink=0.4)
+        dp = ax.imshow(data, vmin = vmin, vmax=vmax, **kwargs)
+        fig.colorbar(dp, ax=ax, shrink=0.4)
         return fig
         
 class SciExposure(Exposure):

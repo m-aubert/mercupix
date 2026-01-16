@@ -14,23 +14,26 @@ import numpy as np
 from scipy.special import legendre, hermitenorm
 
 
-def get_ramp_fit(Ramp, fit_procedure='LSQ', fit_args={},  **kwargs): 
-    """High-level method to estimate fit.
+def get_ramp_fit(Ramp, fit_procedure='LSQ', raw_to_calib_args={},  fit_args={},  **kwargs): 
+    """High-level method to estimate fit.       
 
     Args:
-        Ramp (class): _description_
-        fit_procedure (str, optional): Refers to the method used for fitting. \ 
-                                        Can be 'LSQ', 'Kubik', 'Brandt'. Defaults to 'LSQ'.
+        Ramp (class): Ramp instance
+        fit_procedure (str, optional): Method to be used for fitting. Can be 'LSQ', 'Kubik', 'Brandt'. Defaults to 'LSQ'.
+        raw_to_calib_args (dict, optional): Dictionnary of kwargs to pass to `Ramp.raw_to_calib()`. 
+                                            Defaults to {}.
+        fit_args (dict, optional): Dictionnary of kwargs to pass to `Fitter.fit`. See documentation for each procedure. 
+                                   Defaults to {}.
 
     Returns:
         ndarray : fitted slope
-    """        
+    """
     if fit_procedure == 'LSQ': 
-        Fitter = LSQFit(Ramp.raw_to_calib(), Ramp.t_read,  **kwargs)
+        Fitter = LSQFit(Ramp.raw_to_calib(**raw_to_calib_args), Ramp.t_read,  **kwargs)
     elif fit_procedure == 'Kubik': 
-        Fitter = Kubik2015(Ramp.raw_to_calib(), np.diff(Ramp.t_read)[0], **kwargs)
+        Fitter = Kubik2015(Ramp.raw_to_calib(**raw_to_calib_args), np.diff(Ramp.t_read)[0], **kwargs)
     elif fit_procedure == 'Brandt': 
-        Fitter = Brandt2024(Ramp.raw_to_calib(), timeframe=Ramp.t_read, timegroup=Ramp.t_gread, **kwargs)
+        Fitter = Brandt2024(Ramp.raw_to_calib(**raw_to_calib_args), timeframe=Ramp.t_read, timegroup=Ramp.t_gread, **kwargs)
         
     slope = Fitter.fit(**fit_args)
     return slope 

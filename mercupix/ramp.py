@@ -1,8 +1,9 @@
 import numpy as np
 import h5py
 from astropy.io import fits
-from .utils import get_refpix_ud, get_refpix_lr
+from .utils import get_refpix_ud, get_refpix_lr, plot_mat
 import matplotlib.pyplot as plt
+
 
 class Ramp : 
     """
@@ -187,37 +188,39 @@ class Ramp :
     def nrframes(self):
         pass
     
-    def show_frame(self, frame_num=0,  fig=None, ax=None, corr_refpix=False, **kwargs):
+    def show_frame(self, frame=None,  frame_num=0,  fig=None, ax=None, corr_refpix=False, **kwargs):
         if fig is None and ax is None : 
             fig, ax = plt.subplots()
         if ax is None and fig is not None : 
             ax = fig.add_subplot()
 
-        if not corr_refpix : 
-            frame_ = self.datacube[frame_num,:,:]
-        else : 
-            frame_ = self.corr_refpix()[frame_num,:,:]
-
-        vmin, vmax = np.percentile(frame_.ravel() , [1,99], **kwargs)
+        if frame is None : 
+            if not corr_refpix : 
+                frame = self.datacube[frame_num,:,:]
+            else : 
+                frame = self.corr_refpix()[frame_num,:,:]
         
-        dp = ax.imshow(frame_, vmin = vmin, vmax=vmax)
+        vmin, vmax = np.percentile(frame.ravel() , [1,99])
+                
+        dp = ax.imshow(frame, vmin = vmin, vmax=vmax,**kwargs)
         plt.colorbar(dp, ax=ax, shrink=0.4)
         return fig
 
-    def show_pixramp(self, pixel_num=0,  fig=None, ax=None, corr_refpix=False, **kwargs):
+    def show_pixramp(self, pixramp=None ,pixel_num=0,  fig=None, ax=None, corr_refpix=False, **kwargs):
         if fig is None and ax is None : 
             fig, ax = plt.subplots()
         if ax is None and fig is not None : 
             ax = fig.add_subplot()
-            
-        pixel_num = np.atleast_1d(pixel_num)
-            
-        if not corr_refpix : 
-            ramp_ = self.datacube.reshape(self.datacube.shape[0], -1)[:, pixel_num]
-        else : 
-            ramp_ = self.corr_refpix().reshape(self.datacube.shape[0], -1)[:, pixel_num]
+                
+        pixel_num = np.atleast_1d(pixel_num) if (type(pixel_num) != slice) else pixel_num
+        
+        if pixramp is None :        
+            if not corr_refpix : 
+                pixramp = self.datacube.reshape(self.ngroups, -1)[:, pixel_num]
+            else : 
+                pixramp = self.corr_refpix().reshape(self.ngroups, -1)[:, pixel_num]
 
-        dp = ax.plot(self.t_read, ramp_, **kwargs)
+        dp = ax.plot(self.t_read, pixramp, **kwargs)
         return fig 
     
 class RawRamp(Ramp):   
@@ -228,8 +231,23 @@ class RawRamp(Ramp):
     Args:
         Ramp (class): A Ramp class to process
     """
-    def subtract_offset(self):
-        pass
+    def subtract_offset(self,data=None, offset=None):
+        """
+        Provide offset frame to subtract. 
+                
+        :param self: Description
+        :param offset: (NxN) array of science pixels. 
+                        If None, subtract the first frame of the ramp. 
+        """
+        if data is None : 
+            data = self.corr_refpix()
+
+        if offset :
+            data -= offset
+        else : 
+            data = data[1:,:,:] - data[0,:,:]
+        return data
+        
         
     def get_hotpix(self):
         # Boolean
@@ -259,9 +277,14 @@ class RawRamp(Ramp):
         pass
             
     def linearize_ramp(self):
+        """Should implement Hilbert 2013 method for linearization.
+            Basically a correction that goes like :
+            sum_i^N coef_i*(coeff_1*t)**i 
+            where i goes from 0 to N and N is a polynomial degree. 
+        """
         pass
         
-    def raw_to_calib(self):
+    def raw_to_calib(self, offset=None):
         
         mask = (self.get_hotpix() & 
                 self.get_downpix() & 
@@ -271,11 +294,11 @@ class RawRamp(Ramp):
         #missing refpix corrections. Should change shape ?
         # Should keep refpix and store as well ?
         datacube = self.corr_refpix() #Temp just to make func return something.
-        self.subtract_offset()
+        datacube = self.subtract_offset(data=datacube, offset=offset)
         self.corr_nl() # Prob not here 
         self.corr_ipc() # Prob not here 
         self.corr_bfe() # Prob not here
-        self.corr_dark() #Unclear if here. 
+        self.corr_dark() #Unclear if here. Maybe earlier.
         self.linearize_ramp() # Unclear if relevant to be done here.
         return datacube  
     
