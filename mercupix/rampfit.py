@@ -35,16 +35,6 @@ def get_ramp_fit(Ramp, fit_procedure='LSQ', fit_args={},  **kwargs):
     slope = Fitter.fit(**fit_args)
     return slope 
 
-def poly_(x,deg=1, poly='mono'):
-    if poly == "leg" : 
-        pol = np.stack([legendre(i)(x) for i in range(deg+1)])
-    elif poly == "mono" : 
-        pol = np.stack([x**i for i in range(deg+1)])
-    elif poly == "herm": 
-        pol = np.stack([hermitenorm(i)(x) for i in range(deg+1)])
-    else : 
-        return None
-    return pol.astype(np.float32)
     
 
 class LSQFit: 
@@ -61,12 +51,15 @@ class LSQFit:
             else : 
                 self.tleg = 2.*(tarr - tarr.min())/np.ptp(tarr)-1
 
-    def poly_(self, deg=1, leg=True):
-        from scipy.special import legendre 
-        if leg : 
+    def poly_(self, deg=3, poly='mono'):
+        if poly == "leg" : 
             pol = np.stack([legendre(i)(self.tleg) for i in range(deg+1)])
-        else : 
+        elif poly == "mono" : 
             pol = np.stack([self.tarr**i for i in range(deg+1)])
+        elif poly == "herm": 
+            pol = np.stack([hermitenorm(i)(self.tleg) for i in range(deg+1)])
+        else : 
+            return None
         return pol.astype(np.float32)
 
     def no_w_lstq(self, x, cube):
@@ -74,7 +67,7 @@ class LSQFit:
         self.coeffs = np.linalg.lstsq(x.T, cube, rcond=None)[0]
 
     def fit(self, deg=1, return_slope=True):
-        x = self.poly_(deg=deg, leg=(self.polytype=='leg'))
+        x = self.poly_(deg=deg, poly=self.polytype)
         self.no_w_lstq(x, self.cube) 
         
         if self.polytype == 'leg': 

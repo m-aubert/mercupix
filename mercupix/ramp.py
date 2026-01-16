@@ -1,20 +1,15 @@
 import numpy as np
 import h5py
 from astropy.io import fits
-from scipy.signal import savgol_filter
 from .utils import get_refpix_ud, get_refpix_lr
 import matplotlib.pyplot as plt
 
 class Ramp : 
     """
-    For now placeholder very large func. Will see how this goes. 
-    -> Could be rawcube
-    -> then sci cube 
-    -> then something else. 
-    To be discussed.
-
-    Could be Euclid specific or Roman specific. 
-    We keep best of both worlds ? 
+    General function to define a ramp.
+    Will probably be declined depending what kind of data it is : 
+    (e.g flat, dark etc)
+    
     """
     def __init__(self, 
                  datacube=None, 
@@ -94,8 +89,6 @@ class Ramp :
 
 
     def get_refpix(self, saverawref=True, npix_ref=8): 
-        #Depends on detector type I guess (HxRG) - H2 or H4.
-        # Ugly func. Will need to be clearer.
         if saverawref: 
             self.ud_refpix = np.concatenate([self.datacube[:,:4,:],
                                               self.datacube[:,-4:,:]], 
@@ -194,7 +187,7 @@ class Ramp :
     def nrframes(self):
         pass
     
-    def show_frame(self, frame_num=0,  fig=None, ax=None, corr_refpix=False):
+    def show_frame(self, frame_num=0,  fig=None, ax=None, corr_refpix=False, **kwargs):
         if fig is None and ax is None : 
             fig, ax = plt.subplots()
         if ax is None and fig is not None : 
@@ -205,13 +198,13 @@ class Ramp :
         else : 
             frame_ = self.corr_refpix[frame_num,:,:]
 
-        vmin, vmax = np.percentile(frame_.ravel() , [1,99])
+        vmin, vmax = np.percentile(frame_.ravel() , [1,99], **kwargs)
         
         dp = ax.imshow(frame_, vmin = vmin, vmax=vmax)
         plt.colorbar(dp, ax=ax, shrink=0.4)
         return fig
 
-    def show_pixramp(self, pixel_num=0,  fig=None, ax=None, corr_refpix=False):
+    def show_pixramp(self, pixel_num=0,  fig=None, ax=None, corr_refpix=False, **kwargs):
         if fig is None and ax is None : 
             fig, ax = plt.subplots()
         if ax is None and fig is not None : 
@@ -220,14 +213,21 @@ class Ramp :
         pixel_num = np.atleast_1d(pixel_num)
             
         if not corr_refpix : 
-            frame_ = self.datacube.reshape(self.datacube.shape[0], -1)[:, pixel_num]
+            ramp_ = self.datacube.reshape(self.datacube.shape[0], -1)[:, pixel_num]
         else : 
-            frame_ = self.corr_refpix.reshape(self.datacube.shape[0], -1)[:, pixel_num]
+            ramp_ = self.corr_refpix.reshape(self.datacube.shape[0], -1)[:, pixel_num]
 
-        dp = ax.plot(self.t_read, frame_)
+        dp = ax.plot(self.t_read, ramp_, **kwargs)
         return fig 
     
 class RawRamp(Ramp):   
+    """Ramp class that process Raw data.
+        Will probably evolve to take into account the different processing of 
+        flats, dark and science ramps.
+
+    Args:
+        Ramp (class): A Ramp class to process
+    """
     def subtract_offset(self):
         pass
         
@@ -262,11 +262,13 @@ class RawRamp(Ramp):
         
     def raw_to_calib(self):
         
-        mask = self.get_hotpix() & self.get_downpix()
+        mask = (self.get_hotpix() & 
+                self.get_downpix() & 
+                self.flag_persistence())
+        
         self.mask = mask 
         #missing refpix corrections. Should change shape ?
-        # Should keep refpix and store as well ? 
-        
+        # Should keep refpix and store as well ?
         datacube = self.corr_refpix() #Temp just to make func return something.
         self.subtract_offset()
         self.corr_nl() # Prob not here 

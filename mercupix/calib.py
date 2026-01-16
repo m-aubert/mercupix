@@ -13,11 +13,24 @@
     - Charge diffusion
     
     Other / unclear : 
-    - Gain estimation (PTC)
+    - Gain estimation (PTC) 
     - Dark current (shouldn't it be after flux estimate ?)
     
     This file will either : 
     - Measure these effects in ramps (if possible)
     - Provide method using "external" data to correct for these effects.
-    
+    Will use loaded data from extio.py 
 """
+
+def bfe_kernel() : 
+    """    
+    Define BFE kernel estimated from caracterization campaign
+    """
+    return None
+
+def ipc_kernel() : 
+    """    
+    Define IPC kernel estimated from caracterization campaign
+    """    
+    return None
+
