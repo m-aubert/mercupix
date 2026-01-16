@@ -241,7 +241,8 @@ class RawRamp(Ramp):
         return True 
     
     def flag_persistence(self): 
-        pass        
+        # Detect and mask persistance pixels 
+        return True       
     
     def corr_nl(self):
         # IPNL
