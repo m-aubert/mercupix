@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 from astropy.io import fits
-from .utils import get_refpix_ud, get_refpix_lr, plot_mat
+from .utils import get_refpix_ud, get_refpix_lr
 import matplotlib.pyplot as plt
 
 
