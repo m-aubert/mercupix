@@ -237,15 +237,19 @@ class RawRamp(Ramp):
                 
         :param self: Description
         :param offset: (NxN) array of science pixels. 
-                        If None, subtract the first frame of the ramp. 
+                        If bool, subtract the first frame of the ramp or not.
+                        
+        ..Note : Inplace modification of the time array to account for dimension changes. 
+        Will probably yield new class in the future. 
         """
         if data is None : 
             data = self.corr_refpix()
 
-        if offset :
+        if offset is not None:
             data -= offset
-        else : 
+        elif offset == True: 
             data = data[1:,:,:] - data[0,:,:]
+            self._t_read = self._tread[1:]
         return data
         
         
