@@ -5,7 +5,7 @@ This document will probably list all estimator usable for flux.
 - Brandt2024
 - Casertano2022 (to do)
 - GeneralLikelihood (with jax for fun why not, lets see)
-- Rampfit (for now the general least square)
+- LSQfit (for now the general least square)
 
 Shall now create high-level class that should call the estimator of interest. 
 
