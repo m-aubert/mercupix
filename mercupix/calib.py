@@ -22,15 +22,25 @@
     Will use loaded data from extio.py 
 """
 
-def bfe_kernel() : 
-    """    
-    Define BFE kernel estimated from caracterization campaign
+def bfe_kernel(values) : 
+    """BFE kernel definition estimated from caracterization campaign.
+    
+    Args:
+        values (ndarray-like): List or array of kernel coefficients for IPC
+    Returns:
+        ndarray : BFE kernel to be applied. 
     """
     return None
 
-def ipc_kernel() : 
-    """    
-    Define IPC kernel estimated from caracterization campaign
-    """    
+def ipc_kernel(values, kernel,  nl=False) : 
+    """IPC kernel definition
+
+    Args:
+        values (ndarray-like): List or array of kernel coefficients for IPC
+        kernel : Kernel shape (3x3) , (5x5). Proably depends on nl kwargs. 
+        nl (bool, optional): Whether to include non-linear IPC correction. Defaults to False.
+    Returns:
+        ndarray : NxN kernel to be applied. 
+    """
     return None
 

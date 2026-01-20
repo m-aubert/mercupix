@@ -7,7 +7,7 @@ name = "mercupix"
 dynamic = ["version"]
 description = ''
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
   { name = "Marie Aubert", email = "m.aubert@ip2i.in2p3.fr" },

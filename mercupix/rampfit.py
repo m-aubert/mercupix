@@ -1,44 +1,52 @@
-"""
-This document will probably list all estimator usable for flux.
-
-- Kubik2016
-- Brandt2024
-- Casertano2022 (to do)
-- GeneralLikelihood (with jax for fun why not, lets see)
-- LSQfit (for now the general least square)
-
-Shall now create high-level class that should call the estimator of interest. 
-
-"""
 import numpy as np
 from scipy.special import legendre, hermitenorm
 
+# Rampfitting module. Implemented : 
+#- LSQfit (for now the general least square)
+#- Kubik2016
+#- Brandt2024
+# To do : 
+# Casertano2022 ( WFIRST and JWST models)
+# GeneralLikelihood (with jax) 
 
-def get_ramp_fit(Ramp, fit_procedure='LSQ', raw_to_calib_args={},  fit_args={},  **kwargs): 
-    """High-level method to estimate fit.       
+def fit_ramp(datacube, varcube=None, 
+                       time_frames=None, 
+                       time_group=None, 
+                       method='LSQ', 
+                       fit_args={}, 
+                       slope_err=False, 
+                       **kwargs): 
+    """High-level function to estimate the slope of a given Ramp.
 
     Args:
-        Ramp (class): Ramp instance
-        fit_procedure (str, optional): Method to be used for fitting. Can be 'LSQ', 'Kubik', 'Brandt'. Defaults to 'LSQ'.
-        raw_to_calib_args (dict, optional): Dictionnary of kwargs to pass to `Ramp.raw_to_calib()`. 
-                                            Defaults to {}.
-        fit_args (dict, optional): Dictionnary of kwargs to pass to `Fitter.fit`. See documentation for each procedure. 
-                                   Defaults to {}.
+        datacube (ndarray): Ramp data to process. Expected to be of shape (Nt, Npix , Npix).
+        varcube (ndarray, optional): Variance of the ramp, expected shape of (Nt, Npix , Npix). Defaults to None.
+        time_frames (ndarray, optional): Time array of the frames in ramp (Nt,). Defaults to None.
+        time_group (ndarray, optional): Time array of the groups in ramp (Nt,). Defaults to None.
+        method (str, optional): Fitting method. Implemented are 'LSQ', 'Kubik', 'Brandt'. Defaults to 'LSQ'.
+        fit_args (dict, optional): kwargs to pass to the fitter method. Defaults to {}.
+        slope_err (bool, optional): Whether to return estimated variance of the slope. Defaults to False.
 
     Returns:
-        ndarray : fitted slope
+        ndarray : Fitted slope (Nout , Npix, Npix) where Nout is Nout = 1 or 2, depending on slope_err kwarg.
     """
-    if fit_procedure == 'LSQ': 
-        Fitter = LSQFit(Ramp.raw_to_calib(**raw_to_calib_args), Ramp.t_read,  **kwargs)
-    elif fit_procedure == 'Kubik': 
-        Fitter = Kubik2015(Ramp.raw_to_calib(**raw_to_calib_args), np.diff(Ramp.t_read)[0], **kwargs)
-    elif fit_procedure == 'Brandt': 
-        Fitter = Brandt2024(Ramp.raw_to_calib(**raw_to_calib_args), timeframe=Ramp.t_read, timegroup=Ramp.t_gread, **kwargs)
+    if time_group is None and time_frames is not None :
+        time_group = time_frames
         
-    slope = Fitter.fit(**fit_args)
-    return slope 
-
-    
+    if method == 'LSQ': 
+        Fitter = LSQFit(datacube, time_group,  **kwargs)
+    elif method == 'Kubik': 
+        Fitter = Kubik2015(datacube, np.diff(time_frames)[0], **kwargs)
+    elif method == 'Brandt': 
+        Fitter = Brandt2024(datacube, timeframe=time_frames, timegroup=time_group, **kwargs)
+    elif method == 'IP2I':
+        Fitter = GenericLikelihoodBestfit(datacube=datacube, varcube=varcube)
+        
+    fitted_slope = Fitter.fit(**fit_args)
+    if slope_err :
+        return fitted_slope
+    else : 
+        return fitted_slope[0]
 
 class LSQFit: 
     """
@@ -74,18 +82,25 @@ class LSQFit:
         self.no_w_lstq(x, self.cube) 
         
         if self.polytype == 'leg': 
-            self.coeffs[1]*=2/self.tarr.max()
+            self.coeffs[1]*=2./self.tarr.max()
             
         if return_slope:  
-            return self.coeffs[1]
+            return self.coeffs[1], None
         else:
-            return self.coeffs 
+            return self.coeffs, None 
         
-class Kubik2015 : 
+class Kubik2015: 
     """
     Method based on Kubik2016 to estimate flux from group-difference images
     """
     def __init__(self,ramp, t_frame, macc=None):
+        """Kubik 2015 flux estimator. Uses the group difference.
+
+        Args:
+            ramp (ndarray): Datacube to consider (N, M, M) 
+            t_frame (float): The time per frame.
+            macc (tuble, optional): MACC mode for data acquisition. Defaults to None.
+        """
         self.diff = np.diff(ramp, axis=0)
         self.tpf = t_frame
         if macc is not None : 
@@ -99,10 +114,20 @@ class Kubik2015 :
     def alpha(self): 
         return (1-self.nf**2)/(3*self.nf+self.nd)
     
-    def beta(self, sigma_r, fe):
+    def beta(self, fe, sigma_r):
         return 2*sigma_r**2 * fe / (self.nf * (1+self.alpha))
     
     def estim_f(self,fe, sigma_r):
+        """Flux estimator.
+
+        Args:
+            fe (float or ndarray): Average gain or gain map
+            sigma_r (float or ndarray): Average readnoise or readnoise map.
+
+        Returns:
+            slope : The slope of the ramp.
+        """
+        
         alpha_= self.alpha
         beta_ = self.beta(sigma_r, fe)
 
@@ -112,30 +137,68 @@ class Kubik2015 :
         term -= beta_
         return term
     
-    def estim_sigf(self,sigma_r, fe):
+    def estim_sigf(self,fe,sigma_r):
+        """Variance estimator.
+
+        Args:
+            fe (float or ndarray): Average gain or gain map
+            sigma_r (float or ndarray): Average readnoise or readnoise map.
+
+        Returns:
+            Variance : Variance of the slope of the ramp in units of ADU.
+        """
         alpha_ = self.alpha
-        beta_ = self.beta(sigma_r,fe)
+        beta_ = self.beta(fe, sigma_r)
         g_ = self.estim_f(fe, sigma_r)
         term  = 2*(g_+beta_)**2 /  ((self.ng-1)*
                                     (1+2*fe/(1+alpha_) * 
-                                     (g+beta_)))
+                                     (g_+beta_)))
         
         return term
 
-    def fit(self, fe=1, readnoise=10):
-        return self.estim_f(fe, readnoise) 
+    def fit(self, fe=1.5, readnoise=11):
+        """Fit method.
+
+        Args:
+            fe (int, optional): Average gain or gain map. Defaults to 1.
+            readnoise (int, optional):  Average readnoise or readnoise map. Defaults to 10.
+        Returns:
+            tuple of ndarray : slope and variance of the considered ramp.
+        """
+        return self.estim_f(fe, readnoise) , self.estim_sigf(readnoise, fe) 
             
 class Brandt2024:    
     """
         Method to fit flux based on Brandt 2024. Assumes data are grouped.
     """
     def __init__(self, data, readnoise=11, timeframe=None, timegroup=None, 
-                 add_reset=False, countrateguess=None, group_info=None):
+                 add_reset=False, countrateguess=None, group_info={}):
+        """Brandt 2024 method to estimate flux of a ramp from group differences.
+        
+        Notes: 
+            Assumes data are gouped.
+
+        Args:
+            data (ndarray): Datacube of (N, M, M) where N is the number of groups and M is the number of pixels.
+            readnoise (float, optional): A readnoise estimate for estimating the variance. Defaults to 11.
+            timeframe (ndarray, optional): The time for each frames that where used to create the grouped datacube. 
+                                           Defaults to None.
+            timegroup (ndarray, optional): The time for each group in the datacube (N,). Defaults to None.
+            add_reset (bool, optional): If True, estimate the intercept of the slope. Defaults to False.
+            countrateguess (float or ndarray of floats, optional): An initial guess for the counterate (gain). 
+                                                                   Defaults to None.
+            group_info (dict, optional): Information concerning the macc mode sotring the number of frame constituting each group. 
+                                         Defaults to None.
+        """
         
         self.readnoise = np.atleast_1d(readnoise)     
         self.datai = np.diff(data,axis=0)
         self.ti = timegroup
-        self.Nis = group_info['nframe'] # Array of Nframes / group
+        if not group_info : 
+            self.Nis = 1
+        else:     
+            self.Nis = group_info['nframe'] # Array of Nframes / group
+    
         self.tauis = np.sum( [ (2*ni- 2*i + 1)*tk for i, (ni,tk) in enumerate(zip(self.Nis, timeframe))])     
         self.tauis *=1/self.Nis**2
         self.vari = self.readnoise**2/self.Nis   
@@ -163,12 +226,24 @@ class Brandt2024:
         self.alpha, self.beta = self.get_covar(countrateguess)
                 
     def fit(self, **kwargs): 
+        """Fit method.
+
+        Returns:
+            tuple of ndarray : slope and variance of the considered ramp.
+        """
         if self.reset :
-            return self.get_countrate_intercept(self, return_qf =True,**kwargs)[0]
+            a, a_err = self.get_countrate_intercept(self, return_qf =True,**kwargs)[:-1]
+            return a, a_err
         else :
-            return self.get_countrate_nointercept(return_qf=False, **kwargs)[0]
+            a, b, cov = self.get_countrate_nointercept(return_qf=False, **kwargs)
+            return a, cov[0,0]
 
     def get_covar(self, a) : 
+        """Define group difference covariance matrix.
+
+        Returns:
+            tuple of ndarray : the diagonal and off-diagonal components of the covariance.
+        """
         # Only returns diag value for now. No need to use mem for no reason.
         # Plus sparse matrix here.
         alpha_diag = (self.vari[1:]+self.vari[:-1])/self.diffti**2  
@@ -186,6 +261,14 @@ class Brandt2024:
         return alpha_diag, beta_diag
         
     def get_countrate_nointercept(self, return_qf = True):
+        """Estimator for the slope of the ramp.
+
+        Args:
+            return_qf (bool, optional): Whether to return a quality of the fit estimator. Defaults to True.
+
+        Returns:
+            tuple of ndarray : slope, slope variance, if return_qf is True, chi2.
+        """
                  
         B = np.sum(self.diffd * self.sign[:,None] / self.theta[-1] * (self.phi[1:]*self.Theta+ self.theta[:-1]*self.Phi), axis=0)        
         C = np.sum(self.sign[:,None]/self.theta[-1] * (self.phi[1:]*self.Theta+self.theta[:-1]*self.Phi), axis=0)
@@ -202,6 +285,15 @@ class Brandt2024:
         return a,a_err
         
     def get_countrate_intercept(self, return_qf = True, ktc_prior=None):
+        """Estimator for the slope of the ramp and its intercept.
+
+        Args:
+            return_qf (bool, optional): Whether to return a quality of the fit estimator. Defaults to True.
+            ktc_prior (tuple of floats or ndarray, optional): Priors for the ktc value and errors. Defaults to None.
+
+        Returns:
+            tuple of ndarray : slope, intercept, covariance, and if return_qf is True, chi2.
+        """
         
         if ktc_prior is not None : 
             z, zerr = ktc_prior
@@ -232,7 +324,7 @@ class Brandt2024:
             if z_term2 != 0:
                 chi2 += (b-z)**2 / zerr
             
-            return a, b, chi2, cov_ab
+            return a, b, cov_ab, chi2
                                
         return a,b, cov_ab      
     
@@ -333,9 +425,11 @@ class GenericLikelihoodBestfit :
     """
         In case we want to do some jax/other minimizations for linear
     """
-    def __init__(self):
+    def __init__(self, datacube=None, varcube=None):
         pass
         
+    def fit(self):
+        pass
         
 ### Below : to delete after tests
 
@@ -388,36 +482,5 @@ class GroupDiff:
             
         return alpha_diag, beta_diag
     
-    
-    
-class SinglePixelRamp:
-    """Dedicated to single pix processing.
-    Should include linearization procedure but this should probably be experimented on more.
-    Should also be included Ramp linearization part tbh.
-    """
-    def __init__(self, pixramp, tread):
-            self.pixramp = pixramp
-            self.tread = tread
-
-    def linearize_single_pixel(self, coef, deg=3, poly='mono'): 
-        lin_meas = 1 - self.pixramp / np.sum(poly_(self.t_read, deg=1, poly='mono').T*coef[:2], axis=1)
-        coef_lin = np.linalg.lstsq(poly_(self.pixramp, deg=deg, poly='mono').T, lin_meas.astype(np.float32), rcond=None)[0]
-        pixlin = self.pixramp * (1+(coef_lin[:,None]*poly_(self.pixramp, deg=deg, poly='mono')).sum(axis=0))
-        return pixlin 
-    
-    def ramp_lstq(self, ramp, deg=1, poly='mono'):
-        if poly == 'leg': 
-            x= 2/self.tread[-1]*self.tread - 1.
-        else: 
-            x = self.tread
-        x = poly_(x, deg=deg, poly=poly)
-        coefs = np.linalg.lstsq(x.T, ramp, rcond=None)[0]
-        return coefs
-    
-    def ramp_to_pixelflux(self, deg=1, poly='mono'):
-        coefs = self.ramp_lstq(deg=deg, poly=poly)
-        pixlin = self.linearize_single_pixel(coefs, deg=deg, poly=poly)
-        coef_lin = self.ramp_lstq(pixlin,deg=1, poly='mono')
-        return coef_lin
     
         

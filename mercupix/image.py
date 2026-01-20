@@ -5,6 +5,19 @@ These store the results from the ramp-fitting.
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+def fluxmap_to_scimg(data, error, mask, **meta): 
+    from .io import get_flatfield
+
+    cleanimg = FluxMap(data=data, error=error, mask=mask, **meta)
+    
+    newdata = cleanimg.correct_flatfield()
+    mask = cleanimg.get_final_mask()
+    
+    cleanimg.to_fits(data=newdata, mask=mask)
+    
+    return cleanimg.fileout #Just to return something.
+    
 class Exposure: 
     """ Low-level class defining exposure (2D image extracted from Ramp).
     """
@@ -12,7 +25,7 @@ class Exposure:
         self.data = data
         self.mask = mask
         
-    def to_fits(self):
+    def to_fits(self, data=None, mask=None):
         pass
     
     def _header(self):
@@ -30,10 +43,10 @@ class Exposure:
         vmin, vmax = np.percentile(data.ravel() , [1,99])
         
         dp = ax.imshow(data, vmin = vmin, vmax=vmax, **kwargs)
-        fig.colorbar(dp, ax=ax, shrink=0.4)
+        plt.colorbar(dp, ax=ax, shrink=0.4)
         return fig
         
-class SciExposure(Exposure):
+class FluxMap(Exposure):
     """
     Sci-exposure with detrending.
     Args:
@@ -42,7 +55,8 @@ class SciExposure(Exposure):
     def __init__(self, data=None, mask=None):
         super().__init__(data, mask)
         
-    def corr_flatfield(): 
+    def correct_flatfield(): 
         pass
+    
     
     

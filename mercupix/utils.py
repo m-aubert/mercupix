@@ -1,10 +1,11 @@
-""" This file should contain utilitary function """
 import numpy as np
 from scipy.signal import savgol_filter
 
 def get_refpix_ud(ud_refpix,nframes, nchannel, npix_channel, npix_ref=8):    
     """ Method to estimate the Up-Down reference pixel correction.
-
+    
+    Concatenates up and down pixel of each columns and average (mean) them on a channel basis.
+    
     Args:
         ud_refpix (ndarray): Up-Down reference pixels
         nframes (_type_): Number of frames in the ramp.
@@ -25,7 +26,7 @@ def get_refpix_lr(lr_refpix, npix_channel, polyorder=3, red_fac=0.875):
     """ Method to estimate the Left-Right reference pixel correction.
 
     Args:
-        lr_refpix (_type_): ud corrected left-right reference pixels
+        lr_refpix (_type_): up-down corrected left-right reference pixels
         npix_channel (_type_): number of channels in the detector 
         polyorder (int, optional): polynomial order of smoothing. Defaults to 3.
         red_fac (float, optional): Factor to control the pixel window. 
