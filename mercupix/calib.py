@@ -22,17 +22,19 @@
     Will use loaded data from extio.py 
 """
 
+import numpy as np
+
 def bfe_kernel(values) : 
     """BFE kernel definition estimated from caracterization campaign.
     
     Args:
-        values (ndarray-like): List or array of kernel coefficients for IPC
+        values (ndarray-like): List or array of kernel coefficients for Brighter-Fatter
     Returns:
         ndarray : BFE kernel to be applied. 
     """
     return None
 
-def ipc_kernel(values, kernel,  nl=False) : 
+def ipc_kernel(values, kernel=5,  nl=False) : 
     """IPC kernel definition
 
     Args:
@@ -42,5 +44,48 @@ def ipc_kernel(values, kernel,  nl=False) :
     Returns:
         ndarray : NxN kernel to be applied. 
     """
-    return None
+    kernel = np.zeros((kernel, kernel))
+    kernel = np.fill_diagonal(kernel, values)
+    return kernel
 
+
+class PersistenceModel: 
+    def __init__(self, metadata={}):
+        self.model = model
+        self.metadata = metadata    
+            
+    def get_persistence_correction_adu(self, t):
+        gain = self.get_gain()
+        dt = self.get_last_obs_dt()  # x would be last recorded fluence
+        x = self.get_last_fluence()
+        x  = x * g * exptime #Need to think about units.
+        # from tabulated data : 
+        a_pers, x0, alpha, dx = self.get_tabulated_values()
+        # BEWARE.
+        a_pers = self.time_independent_fermi(a_pers, x, x0, alpha, dx)
+        return a_pers*gain
+        
+    def time_independent_fermi(self, a_pers, x, x0, alpha, dx):
+        return a_pers*(x/x0)**alpha/(1.+np.exp(-(x - x0)/dx))
+    
+    @staticmethod
+    def power_law_persistence(t, a_pers, dt_obs, gamma):
+        return a_pers * ((t+dt_obs)/1000)**(-gamma)
+        
+    def get_last_fluence(self): 
+        from .io import get_previous_exposure
+        exp = get_previous_exposure(self.metadata)
+        if exp is not None : 
+            dt = exp.obstime 
+            x = exp.slope
+        else : 
+            x = 1
+            dt = 1
+            
+        return x, dt 
+    
+    def get_tabulated_values(self):
+        return  1., 1., 1., 1.
+        
+    
+    

@@ -3,6 +3,7 @@ import h5py
 from astropy.io import fits
 from .utils import get_refpix_ud, get_refpix_lr
 import matplotlib.pyplot as plt
+import skimage as ski
 
   
 class Ramp : 
@@ -21,7 +22,8 @@ class Ramp :
                  actslice=slice(4,-4),
                  resolution=None, 
                  npix_channel = None,
-                 grouped=False):
+                 grouped=False,
+                 include_reset=False):
         """Ramp class to read and process a given ramp.
 
         Args:
@@ -47,13 +49,41 @@ class Ramp :
         self.grouped = grouped
         self.npix_channel = npix_channel
         self.channel = self.resolution//self.npix_channel
+        self.include_reset= include_reset
     
     @classmethod
     def from_filename(cls,filename, frame_path=None, time_arr_path=None):
+        """Class method to instantiate Cube from filename
+
+        Parameters
+        ----------
+        filename : str
+            Path to the file to process. Should be fits file or h5 file.
+            
+        frame_path : str, optional
+            If hdf5 like file, frame_path in the file, by default None
+        time_arr_path : str, optional
+            If hdf5 like file, path to time per group or frame in the file, by default None
+
+        Returns
+        -------
+        cls
+            Ramp instance
+
+        Raises
+        ------
+        ValueError
+            If frames cannot be found in hdf5 files.
+            
+            
+        Notes 
+        -----
+        Only accepts 'fits' 
+        """
         if 'fits' in filename : 
             with fits.open(filename) as hdul : 
                 header = hdul[0].header
-                cube = hdul[1].data[:,:,:-128] # Read-in cube and discard guide pixels.
+                cube = np.squeeze(hdul[1].data)[:,:,:-128] # Read-in cube and discard guide pixels.
                 
             detectype = 'H4'
             npix_channel = 128
@@ -99,64 +129,95 @@ class Ramp :
                    npix_channel=npix_channel) 
 
 
-    def get_refpix(self, saverawref=True, npix_ref=8): 
-        """Method to estimate reference pixel correction map per frame.
+    def get_refpix(self, data=None, saverawref=False, npix_ref=8):         
+        """Estimate reference pixel correction of the datacube
 
-        Args:
-            saverawref (bool, optional): Whether to store raw reference in attributes. Defaults to True.
-            npix_ref (int, optional): number of reference pixels in a single row/column. Defaults to 8.
+        Parameters
+        ----------
+        data : ndarray, optional
+            Data to consider when estimating the reference pixels, by default None
+        saverawref : bool, optional
+            Store the references pixels into attributes, by default False
+        npix_ref : int, optional
+            number of reference pixels in a single row/column, by default 8
 
-        Returns:
-            ndarray : Reference map of shape (N, Npix, Npix)
-        """
+        Returns
+        -------
+        ndarray
+            The reference pixel corrections of shape (N, Npix, Npix)
+        """        
+        if data is None : 
+            data = self.datacube
+        
+        ud_refpix = np.concatenate([data[:,:4,:],
+                                    data[:,-4:,:]], 
+                                    axis=1).copy()
+        
         if saverawref: 
-            self.ud_refpix = np.concatenate([self.datacube[:,:4,:],
-                                              self.datacube[:,-4:,:]], 
-                                              axis=1).copy()
+            self.ud_refpix = ud_refpix
             
-            self.lr_refpix = np.concatenate([self.datacube[:,:,:4], 
-                                             self.datacube[:,:,-4:]], 
-                                             axis=1).copy()
-
-        ud_refpix = self.ud_refpix.copy()
+            lr_refpix = np.concatenate([data[:,:,:4], 
+                            data[:,:,-4:]], 
+                            axis=2).copy()
+            self.lr_refpix = lr_refpix 
+            
         ud_refpix = get_refpix_ud(ud_refpix,self.nframes, self.channel, self.npix_channel, 
                                   npix_ref=npix_ref)    
 
-        lr_refpix = get_refpix_lr(self.datacube-ud_refpix[:,None,:], self.npix_channel, 
+        lr_refpix = get_refpix_lr(data-ud_refpix[:,None,:], self.npix_channel, 
                                   polyorder=3, red_fac=0.875)    
             
         return ud_refpix[:,None,:]+lr_refpix[:,:,None]
 
-    def correct_refpix(self):
+    def correct_refpix(self, data=None, **kwargs):
         """Apply reference pixel correction
 
-        Returns:
-            ndarray : Reference pixel corrected of shape (Ngroup, Nactpix, Nactpix)
-        """
-        return  self.get_activecube() - self.get_refpix()[:,:,self.actslice]   
+        Parameters
+        ----------
+        data : ndarray, optional
+            Datacube to use for refpix estimation and correction. 
+            If None, uses the stored datacube passed at initialization, by default None.
+            
+        Returns
+        -------
+        ndarray
+            Reference pixel subtracted datacube of shape (N, Nactpix, Nactpix),
+            where Nactpix is the total number of pixels in the cube subtracted from the reference pixels.
+        """        
+        if data is None : 
+            return  self.get_activecube() - self.get_refpix(**kwargs)[:,:,self.actslice]
+        else : 
+            return data - self.get_refpix(data=data, **kwargs)[:,:,self.actslice]   
     
     def get_activecube(self):
-        """Get active pixel cube, discards reference pixels.
+        """Retrieve the active pixel cube, the cube without reference pixels.
 
-        Returns:
-            ndarray : datacube of shape (N, Nactpix, Nactpix).
-        """
+        Returns
+        -------
+        ndarray
+            datacube of shape (N, Nactpix, Nactpix)
+        """        
         return self.datacube[:,self.actslice, self.actslice]
         
     @property
-    def cube_shape(self):
+    def cube_shape(self):        
         """Provides the shape of a single frame in the ramp.
-        Returns:
-            tuple of ints : shape of a single frame.
+        
+        Returns
+        -------
+        tuple of ints 
+            shape of a single frame.
         """
         return (self.datacube.shape[1], self.datacube.shape[2])
 
     @property
     def act_shape(self):
-        """Provides the shape of a single frame in the ramp, excluding reference pixels.
+        """Provides the shape of active pixels of a single frame.
         
-        Returns:
-            tuple of ints : shape of active pixels in a single frame.
+        Returns
+        -------
+        tuple of ints 
+            shape of active pixels of a single frame.
         """
         _ , shape1, shape2 = self.get_activecube().shape
         return (shape1, shape2)
@@ -164,22 +225,27 @@ class Ramp :
     @property
     def nframes(self):
         """Number of frames defining the datacube.
-        
-        Notes :   
-            If data is grouped, gives the total number of frames : nframes > ngroups.
-            If data is not grouped, ngroups and nframes provide the same information.
 
-        Returns:
-            int : Number of frames.
-        """
+        Returns
+        -------
+        int
+            Number of frames
+            
+        Notes
+        -----
+        If data is grouped, gives the total number of frames such that nframes > ngroups.
+        If data is not grouped, ngroups and nframes provide the same information.
+        """        
         return self.ngroups * self.nfpgroups
 
     @property
     def exptime(self):
         """Exposure time for the ramp.
         
-        Returns:
-            float : Exposure time
+        Returns
+        -------
+        float
+            Exposure time
         """  
         return self.header['EXPTIME'] #Might not work for H4RG
     
@@ -187,20 +253,29 @@ class Ramp :
     def t_read(self):
         """Time-array recording time per frame.
 
-        Returns:
-            ndarray : Time for each frame.
+        Returns
+        -------
+        ndarray 
+            Time for each frame of shape nframes.
         """
-        return np.linspace(0,self.exptime, num=self.nframes)
-    
+        if self.include_reset : 
+            return np.linspace(0,self.exptime, num=self.nframes)
+        else : 
+            return np.linspace(0,self.exptime, num=self.nframes+1)[1:]
+   
+         
     @property
     def t_gread(self):
         """Time-array recording time per group.
 
-        Returns:
-            ndarray : Time for each group.
+        Returns
+        -------
+        ndarray 
+            Time for each group.
             
-        Notes : 
-            If the ramp is not grouped, t_read and t_gread are equal.
+        Notes
+        -----
+        If the ramp is not grouped, t_read and t_gread are equal.
         """
         if self.grouped : 
                 # Doing nothing for now but should integrate macc modes info here.
@@ -213,20 +288,25 @@ class Ramp :
     def ngroups(self):
         """Number of group in datacube.
 
-        Returns:
-            int 
+        Returns
+        -------
+        int 
+            Number of group in datacube.
         
-        Notes : 
-            If data is not grouped, equals number of frames.
+        Notes  
+        -----
+        If data is not grouped, equals number of frames.
         """
         return self.datacube.shape[0]
 
     @property
     def nfpgroups(self):
-        """Number of frames per group
+        """Number of frames per group(s)
 
-        Returns:
-            int or ndarray : int or ndarray depending on macc mode.
+        Returns
+        -------
+        int or tuple of ints 
+            The number of frame per groups. If groups are unevenly set up, tuple of lenght Ngroups.
         """
         if not self.grouped : 
             return 1
@@ -252,17 +332,26 @@ class Ramp :
     def show_frame(self, frame=None,  frame_num=0,  fig=None, ax=None, corr_refpix=False, **kwargs):
         """Utility function to display a single frame in a cube.
 
-        Args:
-            frame (ndarray, optional): A frame to display. Defaults to None.
-            frame_num (int, optional): A frame number to select. Defaults to 0.
-            fig (plt.Figure, optional): A figure instance. Defaults to None.
-            ax (plt.Axe, optional): An axe. Defaults to None.
-            corr_refpix (bool, optional): Whether to correct the reference pixel on selected frame if frame is None. 
-                                          Defaults to False.
-
-        Returns:
-            fig : plt.Figure on which plot was plotted.
-        """
+        Parameters
+        ----------
+        frame : ndarray, optional
+            A frame to display, by default None
+        frame_num : int, optional
+            A frame index to select, by default 0.
+        fig : plt.Figure, optional
+            A matplotlib Figure instance, by default None
+        ax : plt.Axes, optional
+            A matplotlib Axes instance, by default None
+        corr_refpix : bool, optional
+             Whether to correct the reference pixel on selected frame, only if frame is None, by default False
+        kwargs : 
+            Keyword arguments passed to imshow.
+        
+        Returns
+        -------
+        plt.Figure
+            A figure instance on which axes and plots where drawn.
+        """        
         if fig is None and ax is None : 
             fig, ax = plt.subplots()
         if ax is None and fig is not None : 
@@ -280,34 +369,42 @@ class Ramp :
         plt.colorbar(dp, ax=ax, shrink=0.4)
         return fig
 
-    def show_pixramp(self, pixramp=None ,pixel_num=0,  fig=None, ax=None, corr_refpix=False, **kwargs):
+    def show_pixramp(self, pixramp=None ,pixel_ids=[0,0],  fig=None, ax=None, corr_refpix=False, **kwargs):
         """Utility function to display pixel ramps in a cube.
 
-        Args:
-            pixramp (ndarray, optional): A ramp of pixel to display of shape (Ngroup,). Defaults to None.
-            pixel_num (int or list of ints or slice, optional): Pixel(s) for which to show the ramp. Can be a slice.
-                                                                Defaults to 0.
-            fig (plt.Figure, optional): A figure instance. Defaults to None.
-            ax (plt.Axe, optional): An axe. Defaults to None.
-            corr_refpix (bool, optional): Whether to correct the reference pixel on selected frame if frame is None. 
-                                          Defaults to False.
-                                          
-        Returns:
-            fig : plt.Figure on which plot was plotted.
-        """
-        
+        Parameters
+        ----------
+        pixramp : ndarray, optional
+            A ramp of pixel to display of shape (Ngroup,).
+            If None will consider a pixel ramp from the self.datacube instance, by default None
+        pixel_ids : list of ints, slices, lists, optional
+            Pixel indexes of the ramp, by default [0,0].
+        fig : plt.Figure, optional
+            A matplotlib Figure instance, by default None
+        ax : plt.Axes, optional
+            A matplotlib Axes instance, by default None
+        corr_refpix : bool, optional
+             Whether to correct the reference pixel on selected frame, only if frame is None, by default False
+        **kwargs
+            Passed to plt.plot
+             
+        Returns
+        -------
+        plt.Figure
+            A figure instance on which axes and plots where drawn.
+        """  
         if fig is None and ax is None : 
             fig, ax = plt.subplots()
         if ax is None and fig is not None : 
             ax = fig.add_subplot()
-                
-        pixel_num = np.atleast_1d(pixel_num) if (type(pixel_num) != slice) else pixel_num
-        
+                    
         if pixramp is None :        
             if not corr_refpix : 
-                pixramp = self.datacube.reshape(self.ngroups, -1)[:, pixel_num]
+                pixramp = self.datacube[:, pixel_ids[0], pixel_ids[1]]
             else : 
-                pixramp = self.correct_refpix().reshape(self.ngroups, -1)[:, pixel_num]
+                pixramp = self.correct_refpix()[:, pixel_ids[0], pixel_ids[1]]
+                
+        pixramp = pixramp.reshape(pixramp.shape[0], -1) if pixramp.ndim > 2 else pixramp
 
         if pixramp.shape[0] == self.ngroups :  
             ax.plot(self.t_gread, pixramp, **kwargs)
@@ -324,118 +421,160 @@ class RawRamp(Ramp):
                         data=None, 
                         metadata={},
                         offset=0):
-        """Subtract an offset frame to data
+        """Subtract an offset [or metadark] frame or cube to data. 
 
-        Args:
-            data (array, optional): Data to correct. Defaults to None.
-            metadata (dict, optional): Metadata storing external data, here dark. 
-            offset (array, optional): Offset to subtract. 
-                                      ! For now set to 0 for debuging stage !
+        Parameters
+        ----------
+        data : _type_, optional
+            _description_, by default None
+        metadata : dict, optional
+            Metadata storing external data, here dark, by default {}
+        offset : ndarray, optional
+            offset to subtract. ! For now set to 0 for debuging stage , by default 0!
+            If None and metadata is empty, the first frame of the datacube will automatically be subtracted.
 
-        ..Note : Inplace modification of the time array to account for dimension changes. 
-        Will probably yield new class in the future. 
-
-        Returns:
-            ndarray : corrected data.
-        """
+        Returns
+        -------
+        ndarray
+            The offset subtracted data.
+        """        
         if data is None : 
             data = self.correct_refpix()
 
-        if offset is not None: 
-            data -= offset
-            
-        else :
+        if offset is None: 
             if not metadata: 
-                data = data[1:,:,:] - data[0,:,:]
-                self._t_read = self._tread[1:]
+                offset = data[0,:,:]
             else : 
                 from .io import get_dark
                 offset = get_dark(metadata['dark'])
                 
-        return data
+        return data - offset
         
         
     def get_mask(self, 
                  disconnected=True,
                  cosmics=False, 
-                 persistence=False, 
                  saturated=False,
-                 noisy=False): 
-        """Routine to identifiy pixel to mask in ramp.
+                 noisy=False, 
+                 estimate_mask=False): 
+        """Create a bitmask map of the ramp
 
-        Args:
-            disconnected (bool, optional): Remove disconnected/dark pixels. Defaults to True.
-            cosmics (bool, optional): Mask cosmic tracks. Defaults to False.
-            persistence (bool, optional): Mask persistence. Defaults to False.
-            saturated (bool, optional): Mask saturated pixel. Defaults to False.
-            noisy (bool, optional): Mask noisy/hot pixels. Defaults to False.
-
-        Returns:
-            ndarray : Boolean (N, Npix, Npix) mask array.
-        """
-        
-        # Initialize mask
-        mask = np.zeros(self.sci_shape, dtype=bool)
-        if disconnected : 
-            mask &= self.get_downpix()
-        
-        if noisy : 
-            mask &= self.get_noisy()
+        Parameters
+        ----------
+        disconnected : bool, optional
+            Track disconnected or dark pixels, by default True
+        cosmics : bool, optional
+            Track cosmic tracks, by default False
+        saturated : bool, optional
+            Track saturated pixels, by default False
+        noisy : bool, optional
+            Track noisy or hot pixels, by default False
+        estimate_mask : bool, optional
+            Whether to estimate mask, by default False.
+            Overrides all keyword parameters. 
             
-        if saturated : 
-            mask &= self.get_saturated()
-        
-        if cosmics : 
-            mask &= self.identify_cosmics()
+        Returns
+        -------
+        ndarray
+            A shape (N, Nactpix, Nactpix) bitmask.
+        """        
+        # Initialize mask
+        mask = np.zeros(self.sci_shape, dtype='int8')
 
-        if persistence: 
-            mask &= self.get_persistence_pixels()
+        if estimate_mask : 
+            if disconnected : 
+                mask = self.get_downpix()
+            
+            if noisy : 
+                mask += self.get_noisy()
+                
+            if saturated : 
+                mask += self.get_saturated()
+            
+            if cosmics : 
+                mask += self.identify_cosmics()
+
+            if mask.sum() == 0 : 
+                from astropy.stats import sigma_clip
+                
+                maskdata = sigma_clip(self.datacube, sigma=17, axis=(1,2))
+                mask = maskdata.mask.astype('int8')
+            #if persistence: 
+            #    mask &= self.get_persistence_pixels()
             
         return mask
         
     def get_noisy(self, data=None):
-        """Identify noisy pixel in data.
-        Args:
-            data (_type_, optional): Data cube (N, Npix, Npix). Defaults to None.
-        Returns:
-            ndarray : Boolean (N, Npix, Npix) array where True means noisy pixels.
+        """ Get identified noisy pixel in data.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            Data cube (N, Npix, Npix). by default None
+
+        Returns
+        -------
+        ndarray
+            Boolean (N, Npix, Npix) array where True means noisy pixels.
         """
         # Boolean
-        return True
+        # Get noisy pixels as bitmap or as boolean ?
+        from astropy.stats import sigma_clip
+            
+        maskdata = sigma_clip(self.datacube, sigma=17, axis=(1,2))
+        mask = maskdata.mask
+        # For now this identifies noisy pixels in terms of delta. 
+        # Sigma_clipping along time axis might help in detecting whacky pixels as well ?
+        # See how this goes. 
+        return mask
     
     def get_saturated(self, data=None):
         """Identify saturated pixel in data.
-        Args:
-            data (_type_, optional): Data cube (N, Npix, Npix). Defaults to None.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            Data cube (N, Npix, Npix). by default None
+            
         Returns:
             ndarray : Boolean (N, Npix, Npix) array where True means saturated pixels.
+
         """
-        pass
-    
-    def get_persistence_pixels(self, data=None):
-        """Identify persistent pixels
-        Args:
-            data (_type_, optional): Data cube (N, Npix, Npix). Defaults to None.
-        Returns:
-            ndarray : Boolean (N, Npix, Npix) array where True means persistent pixels.
-        """
-        pass
-    
+        # In the future will probably apply percentage to this value.
+        # cause this one is the maximum allowed.
+        
+        return self.datacube == 65535
+            
     def identify_cosmics(self, data=None): 
-        """Identify cosmic track pixels
-        Args:
-            data (_type_, optional): Data cube (N, Npix, Npix). Defaults to None.
+        """Identify cosmic track pixels.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            Data cube (N, Npix, Npix). by default None
+            
         Returns:
-            ndarray : Boolean (N, Npix, Npix) array where True means cosmics.
+            ndarray : Boolean (N, Npix, Npix) array where True means cosmic.
         """
         # Boolean
+        # Brandt provides something in the fit.
+        # Look at how it is implemented.
+        # Despite jumps.
+        # Flag likely cosmic -> might help in detecting the jumps.
+        # Additionnaly -> levels & endpoints in terms of ADU might help in flagging persistence
+        # Snowball events & all could lead to high high fluxes.
         return True
     
     def get_downpix(self, path=None):
-        """ Recover dark/disconnected pixels
-        Args:
-            path (_type_, optional): Path to disconnected pixel mask from metadata.
-        Returns:
+        """Recover pixels markes as dark/disconnected.
+
+        Parameters
+        ----------
+        path (str, optional) : Path to disconnected pixel mask from metadata.
+            Data cube (N, Npix, Npix). by default None
+            
+        Returns
+        -------
             ndarray : Boolean (N, Npix, Npix) array where True means disconnected.
         """
         from .io import load_downpix
@@ -443,91 +582,84 @@ class RawRamp(Ramp):
         mask = load_downpix(path=path)
         return mask
      
-    def correct_persistence(self,data=None,
-                                 metadata=None):
-        """ Method to correct for persistence effect in datacube. 
-        
-        Args:
-            data (ndarray, optionnal) : Array to which correction is applied
-            path (_type_, optional): Metadata to consider for recovering persistence corrections.
-        Returns:
-            ndarray : Boolean (N, Npix, Npix) array where True means disconnected.
-            
-        Notes: 
-            Not to be confused with persistence mask. Different way of handling it.
-        """
-        # some stuff to detect persistence in data and predict flux.
-        pass
-        
-    def correct_bfe(self, data=None,
-                          metadata={}):
-        """Method to correct for Brighter-Fatter effect in ramp.
-
-        Args:
-            data (ndarray, optionnal) : Array to which correction is applied
-            metadata (dict, optional): Metadata to consider for loading bfe_kernel.
-        """
-        # Not sure if should applied at this stage
-        from .io import load_bfe
-        from .calib import bfe_kernel 
-                
-        k_bfe = bfe_kernel(load_bfe(metadata['bfe']))
-        
-        pass
     
     def correct_ipc(self, data=None, 
                           nl=False, 
-                          metadata={}):
+                          metadata={}, 
+                          ipckernel=np.ones((5,5))):
         """Method to correct for Inter-pixel capacitance.
 
-        Args:
-            data (ndarray, optionnal) : Array to which correction is applied.
-            nl (bool, optionnal) : If True, also consider non-linear IPC correction.
-            metadata (dict, optional): Metadata to consider for loading ipc_kernel.
+        Parameters
+        ----------
+        data : (ndarray, optional), optional
+            Array to which correction is applied, by default None.
+        nl : bool, optional
+            If True, also consider non-linear IPC correction., by default False
+        metadata : dict, optional
+            Metadata to consider for loading ipc_kernel, by default empty dictionnary.
+        ipckernel : ndarray, optional
+            Kernel to convolve to correct IPC 
+        Returns
+        -------
+            ndarray : corrected data cube (N,pix,pix)
         """
-        from .io import load_ipc
-        from .calib import ipc_kernel 
+        from scipy.ndimage import convolve
+        if ipckernel is None : 
+            from .io import load_ipc
+            from .calib import ipc_kernel 
+            
+            # Will probably define a kernel model (3x3) or (5x5).
+            k_ipc = ipc_kernel(load_ipc(metadata['ipc'], nl=nl))
+                    
+        else : 
+            k_ipc = ipckernel # OR DECONVOLVE ?
+            
+        return ski.restoration.richardson_lucy(data, k_ipc, num_iter=1)
         
-        # Will probably define a kernel model (3x3) or (5x5).
-        k_ipc = ipc_kernel(load_ipc(metadata['ipc'], nl=nl))
-                
-        pass
             
     def correct_nl(self, data=None, 
                          metadata={}):
         """Method to correct for classical non-linearity.
 
-        Args:
-            data (ndarray, optionnal) : Array to which correction is applied.
-            metadata (dict, optional): Metadata to consider for loading corrections coefficients.
+        Parameters
+        ----------
+        data : (ndarray, optionnal), optional
+            Array to which correction is applied, by default None.
+        nl : bool, optional
+            If True, also consider non-linear IPC correction, by default False
+        metadata : dict, optional
+            Metadata to consider for loading corrections coefficients, by default empty dictionnary.
+            
+        Returns
+        -------
+            ndarray : Linearized data cube (N, Npix, Npix).
         """
         from .io import load_nl_coefficients
         
-        a , b, c = load_nl_coefficients(path=metadata['nl'])
-        # Do something        
-        pass
+        nl_coefs = load_nl_coefficients(path=metadata['nl'])
         
-    def correct_burnin(self):
-        """Method to correct for burnin effect in ramp 
-            
-        """
-        pass
+        correction_term = 1
+        for i, coef in enumerate(nl_coefs): 
+            correction_term += coef*data**i 
+        
+        return data*correction_term
+        
     
-    def correct_crnl(self):
-        """Method to correct for count-rate (cr) non-linearity
-            
-        """
-        pass
-    
-    def get_variance(self,data=None):
-        """Estimate variance in the datacube.
+    def get_variance(self,data=None):  
+        """Estimate variance in the datacube
 
-        Args:
-            data (ndarray, optional): Datacube. Defaults to None.
+        Parameters
+        ----------
+        data : (ndarray, optionnal), optional
+            Datacube to consider.
 
-        Returns:
-            ndarray : variance
+        Returns
+        -------
+            ndarray : Variance of the datacube, same shape as datacube. 
+                Think on how to do that tbh.
         """
+        
+        #Clarifier ce qu'on veut. Variance temporelle ou variance par pixel ?
         var = 0
         if data is not None : 
             var = np.diff(data, axis=0) 
@@ -543,76 +675,85 @@ class RawRamp(Ramp):
                         corr_ipc=False,
                         corr_ipcnl=False, 
                         corr_dark=False, 
-                        corr_burnin=False,
                         corr_nl=False, 
-                        corr_crnl=False,
-                        corr_bfe=False,
-                        persistence=False,
                         mask=False,
                         mask_kwargs={},
-                        metadata={}):
-        """Function to pre-process ramp up before fitting flux.
+                        metadata={},
+                        corr_bfe=False,
+                        corr_crnl=False,
+                        persistence=False,
+                        corr_burnin=False):
+        """General function that successively apply correction *prior* to fitting the ramp.
 
-        Args:
-            ramp (_type_): _description_
-            corr_refpix (bool, optional): _description_. Defaults to False.
-            corr_ipc (bool, optional): _description_. Defaults to False.
-            corr_ipcnl (bool, optional): _description_. Defaults to False.
-            corr_dark (bool, optional): _description_. Defaults to False.
-            corr_burnin (bool, optional): _description_. Defaults to False.
-            corr_nl (bool, optional): _description_. Defaults to False.
-            corr_crnl (bool, optional): _description_. Defaults to False.
-            corr_bfe (bool, optional): _description_. Defaults to False.
-            persistence (bool, optional): _description_. Defaults to False.
-            mask (bool, optional): _description_. Defaults to False.
-            mask_kwargs (dict, optional): _description_. Defaults to {}.
+        Parameters
+        ----------
+        datacube : ndarray, optional
+            datacube to process. If none, will use the loaded one, by default None
+        corr_refpix : bool, optional
+            Apply reference pixel correction, by default True
+        corr_ipc : bool, optional
+            Apply ipc correction, by default False
+        corr_ipcnl : bool, optional
+            Apply non-linear ipc correction, by default False
+        corr_dark : bool, optional
+            Subtract dark, if true apply self.subtract_offset, by default False
+        corr_nl : bool, optional
+            If True, apply non-linearity correction to ramp, by default False
+        mask : bool, optional
+            If True, compute a (N, npix,npix) bitmask, by default False
+        mask_kwargs : dict, optional
+            Dictionnary of keyword arguments to pass to self.get_mask, see get_mask of kwargs, by default {}
+        metadata : dict, optional
+            Metadata dictionnary with paths to external files, should be loaded with io.fetch_metadata, by default {}
 
-        Returns:
-            _type_: _description_
-        """
+        Returns
+        -------
+        datacube : ndarray
+            Processed and corrected datacube of shape (N, Npix, Npix)
+        varcube : ndarray
+            Variance of datacube, shape (N, Npix, Npix)
+        mask : ndarray
+            Bitmask of datacube.shape (N,Npix,Npix) if mask is True. 
+            If mask is False, bitmask is 0 everywhere.
+        """     
         
         if datacube is None : 
             datacube = self.get_activecube()
             
         if corr_refpix : 
             datacube = self.correct_refpix()
-        
+                    
         if corr_ipc : 
             datacube = self.correct_ipc(data=datacube, 
-                                        nl=corr_ipcnl,
-                                        metadata=metadata)
+                                        nl=corr_ipcnl, # C-NL (adu not flux)
+                                        metadata=metadata)        
         if corr_dark :             
             datacube = self.subtract_offset(data=datacube,
                                             metadata=metadata)
         
-        if corr_burnin : 
-            datacube = self.correct_burnin(data=datacube)
+        #if corr_burnin : 
+        #    datacube = self.correct_burnin(data=datacube)
             
-        if persistence: 
-            datacube = self.correct_persistence(data=datacube,
-                                                metadata=metadata)
+        #if persistence:  # CalibRamp / model -> to_fit ramp
+        #    datacube = self.correct_persistence(data=datacube,
+        #                                        metadata=metadata)
             
+        #if corr_bfe:    # CalibRamp / model -> to_fit ramp
+        #    datacube = self.correct_bfe(data=datacube,
+        #                                metadata=metadata)
+        
         if corr_nl : 
             datacube = self.correct_nl(data=datacube,
                                        metadata=metadata)
         
-        if corr_bfe:    
-            datacube = self.correct_bfe(data=datacube,
-                                        metadata=metadata)
-            
-        if corr_crnl:
-            datacube = self.correct_crnl(data=datacube,
-                                         metadata=metadata)
-        
-        varcube = self.get_variance(data=datacube) # Unclear when
+        varcube = self.get_variance(data=datacube) # Unclear when and what
         
         if mask: 
             mask = self.get_mask(**mask_kwargs)
-            
-            return datacube, varcube, mask
-
         else : 
-            return datacube, varcube
+            mask = np.zeros(datacube.shape, dtype=np.int8) 
+
+        return (datacube, varcube, mask)
         
         
 class LinRamp: 
