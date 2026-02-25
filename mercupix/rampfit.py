@@ -252,7 +252,7 @@ class Brandt2024:
             a, _, a_err, qf = self.get_countrate_intercept(return_qf=True,**kwargs)
             return a, a_err[0,0], qf
         else :
-            a, a_err = self.get_countrate_nointercept(return_qf=True, **kwargs)
+            a, a_err, qf = self.get_countrate_nointercept(return_qf=True, **kwargs)
             return a, a_err, qf
 
     def get_covar(self, a) : 
