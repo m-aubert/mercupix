@@ -618,26 +618,28 @@ class RawRamp(Ramp):
         
             
     def correct_nl(self, data=None, 
-                         metadata={}):
+                         metadata={},
+                         nl_coefficients=None):
         """Method to correct for classical non-linearity.
 
         Parameters
         ----------
         data : (ndarray, optionnal), optional
             Array to which correction is applied, by default None.
-        nl : bool, optional
-            If True, also consider non-linear IPC correction, by default False
         metadata : dict, optional
             Metadata to consider for loading corrections coefficients, by default empty dictionnary.
-            
+        nl_coefficients : list, optional
+            Coefficients to apply for correction
         Returns
         -------
             ndarray : Linearized data cube (N, Npix, Npix).
         """
-        from .io import load_nl_coefficients
         
-        nl_coefs = load_nl_coefficients(path=metadata['nl'])
-        
+        if nl_coefficients is None : 
+            from .io import load_nl_coefficients
+            
+            nl_coefs = load_nl_coefficients(path=metadata['nl'])
+            
         correction_term = 1
         for i, coef in enumerate(nl_coefs): 
             correction_term += coef*data**i 
@@ -682,7 +684,9 @@ class RawRamp(Ramp):
                         corr_bfe=False,
                         corr_crnl=False,
                         persistence=False,
-                        corr_burnin=False):
+                        corr_burnin=False,
+                        nl_coefficients=None,
+                        ipckernel=np.ones((5,5))):
         """General function that successively apply correction *prior* to fitting the ramp.
 
         Parameters
@@ -726,7 +730,8 @@ class RawRamp(Ramp):
         if corr_ipc : 
             datacube = self.correct_ipc(data=datacube, 
                                         nl=corr_ipcnl, # C-NL (adu not flux)
-                                        metadata=metadata)        
+                                        metadata=metadata,
+                                        ipckernel=ipckernel)        
         if corr_dark :             
             datacube = self.subtract_offset(data=datacube,
                                             metadata=metadata)
@@ -744,7 +749,8 @@ class RawRamp(Ramp):
         
         if corr_nl : 
             datacube = self.correct_nl(data=datacube,
-                                       metadata=metadata)
+                                       metadata=metadata,
+                                       nl_coefficients=nl_coefficients)
         
         varcube = self.get_variance(data=datacube) # Unclear when and what
         
