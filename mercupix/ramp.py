@@ -638,10 +638,10 @@ class RawRamp(Ramp):
         if nl_coefficients is None : 
             from .io import load_nl_coefficients
             
-            nl_coefs = load_nl_coefficients(path=metadata['nl'])
+            nl_coefficients = load_nl_coefficients(path=metadata['nl'])
             
         correction_term = 1
-        for i, coef in enumerate(nl_coefs): 
+        for i, coef in enumerate(nl_coefficients): 
             correction_term += coef*data**i 
         
         return data*correction_term
@@ -686,7 +686,8 @@ class RawRamp(Ramp):
                         persistence=False,
                         corr_burnin=False,
                         nl_coefficients=None,
-                        ipckernel=np.ones((5,5))):
+                        ipckernel=np.ones((5,5)),
+                        offset=0):
         """General function that successively apply correction *prior* to fitting the ramp.
 
         Parameters
@@ -727,15 +728,15 @@ class RawRamp(Ramp):
         if corr_refpix : 
             datacube = self.correct_refpix()
                     
+        if corr_dark :             
+            datacube = self.subtract_offset(data=datacube,
+                                            metadata=metadata,
+                                            offset=offset)
         if corr_ipc : 
             datacube = self.correct_ipc(data=datacube, 
                                         nl=corr_ipcnl, # C-NL (adu not flux)
                                         metadata=metadata,
-                                        ipckernel=ipckernel)        
-        if corr_dark :             
-            datacube = self.subtract_offset(data=datacube,
-                                            metadata=metadata)
-        
+                                        ipckernel=ipckernel)                
         #if corr_burnin : 
         #    datacube = self.correct_burnin(data=datacube)
             
