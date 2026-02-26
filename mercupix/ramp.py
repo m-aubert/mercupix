@@ -129,7 +129,7 @@ class Ramp :
                    npix_channel=npix_channel) 
 
 
-    def get_refpix(self, data=None, saverawref=False, npix_ref=8):         
+    def get_refpix(self, data=None, saverawref=False, npix_ref=8, **kwargs):         
         """Estimate reference pixel correction of the datacube
 
         Parameters
@@ -164,8 +164,7 @@ class Ramp :
         ud_refpix = get_refpix_ud(ud_refpix,self.nframes, self.channel, self.npix_channel, 
                                   npix_ref=npix_ref)    
 
-        lr_refpix = get_refpix_lr(data-ud_refpix[:,None,:], self.npix_channel, 
-                                  polyorder=3, red_fac=0.875)    
+        lr_refpix = get_refpix_lr(data-ud_refpix[:,None,:], self.npix_channel, **kwargs)    
             
         return ud_refpix[:,None,:]+lr_refpix[:,:,None]
 

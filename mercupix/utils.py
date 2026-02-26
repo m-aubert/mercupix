@@ -54,8 +54,12 @@ def get_refpix_lr(lr_refpix, npix_channel, polyorder=3, red_fac=0.875):
     """    
     lr_corr = np.concatenate([lr_refpix[:,4:-4,:4], lr_refpix[:,4:-4,-4:]], axis=2).mean(axis=2)
     
+    window_length = int(red_fac*npix_channel)
+    if window_length > 128 : 
+        window_length = int(red_fac*128)
+        
     lr_corr = np.asarray(list(map(lambda x : savgol_filter(x,
-                                                        window_length=int(red_fac*npix_channel), 
+                                                        window_length=window_length, 
                                                         polyorder=polyorder).astype(np.float32), lr_corr)))
 
     return lr_corr
