@@ -30,3 +30,9 @@ Source = "https://github.com/m-aubert/mercupix"
 
 [tool.setuptools]
 package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "mercupix.__version__"}
