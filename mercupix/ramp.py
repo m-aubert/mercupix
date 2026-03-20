@@ -699,7 +699,7 @@ class RawRamp(Ramp):
             Apply ipc correction, by default False
         corr_ipcnl : bool, optional
             Apply non-linear ipc correction, by default False
-        corr_dark : bool, optional
+        corr_offset : bool, optional
             Subtract dark, if true apply self.subtract_offset, by default False
         corr_nl : bool, optional
             If True, apply non-linearity correction to ramp, by default False
@@ -727,7 +727,7 @@ class RawRamp(Ramp):
         if corr_refpix : 
             datacube = self.correct_refpix()
                     
-        if corr_dark :             
+        if corr_offset :             
             datacube = self.subtract_offset(data=datacube,
                                             metadata=metadata,
                                             offset=offset)
@@ -752,6 +752,13 @@ class RawRamp(Ramp):
                                        metadata=metadata,
                                        nl_coefficients=nl_coefficients)
         
+        
+        if corr_dark : 
+            datacube = self.correct_dark(data=datacube,
+                                       metadata=metadata,
+                                       nl_coefficients=nl_coefficients)
+        
+
         varcube = self.get_variance(data=datacube) # Unclear when and what
         
         if mask: 
