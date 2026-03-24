@@ -114,7 +114,7 @@ class LSQFit():
             coefs.append( self._fit_polynome_on_data(polynome, data=this_data) )
             times.append( this_times.max() )
             
-        return np.asarray(times), np.asarray(coefs)
+        return xframes, np.asarray(times), np.asarray(coefs)
 
     def get_model(self, pixels=None, coefs=None):
         """ """
@@ -166,7 +166,10 @@ class LSQFit():
     
         if in_adu:
             if self.polynome_type in ["leg", "legendre", "herm", "hermite"]:
+                # 
                 offset -= slope
+
+                
                 if times is None:
                     times = self.times
                     
