@@ -23,7 +23,8 @@ dependencies = [
   "astropy",
   "numpy",
   "h5py", 
-  "scipy"]
+  "scipy",
+  "skimage"]
 
 [project.urls]
 Source = "https://github.com/m-aubert/mercupix"

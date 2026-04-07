@@ -1,5 +1,7 @@
 
-
+import numpy as np 
+from astropy.io import fits
+import h5py
 
 
 
@@ -167,4 +169,50 @@ def load_data(filepath):
     data=0
     return data
 
+## -------------- ##
+## RAMP I/O Utils ##
+## -------------- ##
 
+def from_roman(filename):
+    with fits.open(filename) as hdul: 
+        header = hdul[0].header
+        data = np.squeeze(hdul[1].data)[:,:,:-128] 
+        tframe = header['TFRAME']
+        tgroup = header['TGROUP']
+        nchannels = header['NOUTPUTS']
+        times  = np.linspace(header['TGROUP'], header['XPOSURE'], num=header['NGROUPS'])
+            
+    return  data , tframe, tgroup, nchannels, times
+    
+def from_pyxim(filename):
+    with fits.open(filename) as hdul : 
+        data = hdul[0].data
+        times = hdul[1].data['readout_times']
+        nchannels = header['NCHAN']
+            
+    tframe = np.diff(times).mean()
+    tgroup = None
+    return data, tframe, tgroup, nchannels, times
+
+def from_ip2i(filename, frame_path='/run/seq_1/asic_1/ramp_1', time_arr_path=None):
+    f = h5py.File(filename, 'r')
+
+    if time_arr_path is None : 
+        time_arr_path = '/'.join(frame_path.split('/')[:2])+'/env_measures/'
+
+    npix_channel = 64
+    data = f[frame_path][()][:,:,npix_channel:] 
+    tarr = f[time_arr_path]['time'] 
+
+    tframe = np.diff(tarr).mean()
+    times = np.arange(1, cube.shape[0])*tframe
+    nchannels=32
+    tgroup = None 
+
+    return data, tframe, tgroup, nchannels, times
+
+def from_anyfits(filename): 
+    with fits.open(filename) as hdul : 
+        data = hdul[0].data
+
+    return data

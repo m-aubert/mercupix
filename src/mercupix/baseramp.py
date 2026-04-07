@@ -12,14 +12,7 @@ class BaseRamp( ):
     def __init__(self, data, times, 
                  tgroup=None, 
                  nrefpixels=4,
-                 nchannels=32,
-                 # 
-                 # refpix=None, filename=None, 
-                 # header=None, 
-                 # active_pixels=slice(4, -4),
-                 # npix_channel = None,
-                 # include_reset=False
-                ):
+                 nchannels=32):
         """Ramp class to read and process a given ramp.
 
         Parameters:
@@ -44,21 +37,31 @@ class BaseRamp( ):
         self._data = np.asarray(data)
         self._times = np.asarray(times)
         self._tgroup = tgroup
+        self._tframe = tframe
         self._nrefpixels = int(nrefpixels)
         self._nchannels = int(nchannels)
-     
-    def get_refpix_map(self, data=None, saverawref=False, npix_ref=8, 
-                       active_shape=True, **kwargs):         
+        self._actslice = slice(self._nrefpixels,-self._nrefpixels)
+        self._frame_shape = self._data.shape[1:] # Check
+        self._act_shape = np.asarray(self._frameshape)-self._nrefpixels
+        
+    def get_refpix_map(self, data=None, active_shape=True, **kwargs):         
         """Estimate reference pixel correction
 
         Parameters
         ----------
         data : ndarray, optional
             Data to consider when estimating the reference pixels, by default None
-        saverawref : bool, optional
-            Store the references pixels into attributes, by default False
-        npix_ref : int, optional
-            number of reference pixels in a single row/column, by default 8
+
+        active_shape : bool, optional
+            Remap the reference pixel map to the active-shape of the detector,
+            by default True
+        
+        **kwargs:
+            Keyword arguments passed to the left-right pixel correction
+        
+        See also
+        --------
+        `mercupix.refpixels.get_refpix_lr`
 
         Returns
         -------
@@ -83,13 +86,14 @@ class BaseRamp( ):
                                   npix_ref=self.nrefpixels,
                                   **kwargs)    
         if active_shape:
-            ud_model = ud_model[:, self.nrefpixels:-self.nrefpixels]
+            ud_model = ud_model[:, self._actslice]
             
         return ud_model[:, None, :] + lr_model[:, :, None]
         
     # ================ #
     #   properties     #
-    # ================ #    
+    # ================ #  
+      
     @property
     def data(self):
         """ datacube to be fitted """
@@ -124,4 +128,154 @@ class BaseRamp( ):
     def nrefpixels(self):
         """ """
         return self._nrefpixels
+    
+    @property
+    def active_shape(self):
+        return self._actshape
+    
+    @property
+    def frame_shape(self):
+        return self._frameshape
+    
+    @property
+    def actslice(self):
+        """ """
+        return self._actslice
+    
+    @property
+    def cube_shape(self):
+        return (self.ngroups, self.frameshape[0], self.frameshape[1])
         
+    # ------- #
+    #   I/O   #
+    # ------- #
+        
+    @classmethod
+    def from_filename(cls,filename, 
+                      datatype='pyxim',
+                      nrefpixels=4,
+                      nchannels=32,
+                      **kwargs):
+        """Create Ramp from filename.
+
+        Parameters
+        ----------
+        filename : str
+            Path to the file to process. Should be fits file or h5 file.
+            
+        datatype : str, optional
+            - 'pyxsim' for pyxim format data [fits]
+            - 'roman' for roman flight-like format data [fits]
+            - 'ip2i' for ip2i format data [hdf5]
+            - None for anyfits format data. times will be set to empty. 
+        
+        **kwargs : 
+            keyword arguments passed to from_ip2i.
+        
+        Returns
+        -------
+        cls
+            Ramp instance        
+        """
+        if datatype == 'roman' : 
+            from .io import from_roman 
+            data, tframe, tgroup, nchannels, times = from_roman(filename)
+        
+        if datatype == 'pyxim' : 
+            from .io import from_pyxim 
+            data, tframe, tgroup, nchannels, times = from_pyxim(filename)
+            
+        if datatype == 'ip2i' : 
+            from .io import from_ip2i
+            data, tframe, tgroup, nchannels, times = from_ip2i(filename, **kwargs)
+        if datatype is None :
+            from .io import from_anyfits
+            
+            data = from_anyfits(filename)
+            tframe = None 
+            tgroup = None 
+            times = []
+
+        return cls(data, times, 
+                 tgroup=tgroup, 
+                 nrefpixels=nrefpixels,
+                 nchannels=nchannels,
+                 tframe=tframe)
+        
+    # ==================== #  
+    #   Plotting utility   #
+    # ==================== #  
+        
+    def show_frame(self, frame=None,  frame_num=0, corr_refpix=False, **kwargs):
+        """Utility function to display a single frame in a cube.
+
+        Parameters
+        ----------
+        frame : ndarray, optional
+            A frame to display, by default None
+        frame_num : int, optional
+            A frame index to select, by default 0.
+        corr_refpix : bool, optional
+             Whether to correct the reference pixel on selected frame, only if frame is None, by default False
+        **kwargs
+            Passed to utils.plot_frame
+            
+        Returns
+        -------
+        plt.Figure, plt.Axes
+            Figure and Axes instance on which axes and plots where drawn.
+        """
+        from .utils import plot_frame
+                
+        if frame is None : 
+            if not corr_refpix : 
+                frame = self.data[frame_num,:,:]
+            else : 
+                frame = self.correct_refpix()[frame_num,:,:]
+                
+        fig, ax = plot_frame(frame, **kwargs) 
+        
+        return (fig, ax)
+
+    def show_pixramp(self, pixramp=None, 
+                           pixel_ids=[0,0], 
+                           corr_refpix=False, 
+                           x_time = True, 
+                           **kwargs):
+        """Utility function to display pixel ramps in a cube.
+
+        Parameters
+        ----------
+        pixramp : ndarray, optional
+            A ramp of pixel to display of shape (Ngroup,).
+            If None will consider a pixel ramp from the self.data instance, by default None
+        pixel_ids : list of ints, slices, lists, optional
+            Pixel indexes of the ramp, by default [0,0].
+        corr_refpix : bool, optional
+             Whether to correct the reference pixel on selected frame, only if frame is None, by default False
+        **kwargs
+            Passed to utils.plot_ramp
+             
+        Returns
+        -------
+        plt.Figure, plt.Axes
+            Figure and Axes instance on which axes and plots where drawn.
+        """  
+        from .utils import plot_ramp 
+        
+        if pixramp is None :        
+            if not corr_refpix : 
+                pixramp = self.data[:, pixel_ids[0], pixel_ids[1]]
+            else : 
+                pixramp = self.correct_refpix()[:, pixel_ids[0], pixel_ids[1]]
+                
+        pixramp = pixramp.reshape(pixramp.shape[0], -1) if pixramp.ndim > 2 else pixramp
+        
+        if x_time : 
+            x_time = self.times
+        else : 
+            x_time = None
+        
+        fig, ax = plot_ramp(pixramp, x=x_time, **kwargs)
+
+        return (fig , ax)
