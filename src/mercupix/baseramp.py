@@ -11,6 +11,7 @@ class BaseRamp( ):
     """
     def __init__(self, data, times, 
                  tgroup=None, 
+                 tframe=None,
                  nrefpixels=4,
                  nchannels=32):
         """Ramp class to read and process a given ramp.
@@ -42,7 +43,7 @@ class BaseRamp( ):
         self._nchannels = int(nchannels)
         self._actslice = slice(self._nrefpixels,-self._nrefpixels)
         self._frame_shape = self._data.shape[1:] # Check
-        self._act_shape = np.asarray(self._frameshape)-self._nrefpixels
+        self._act_shape = np.asarray(self._frame_shape)-self._nrefpixels*2
         
     def get_refpix_map(self, data=None, active_shape=True, **kwargs):         
         """Estimate reference pixel correction
@@ -79,7 +80,7 @@ class BaseRamp( ):
                                   self.ngroups, 
                                   self.nchannels, 
                                   self.npix_per_channel, 
-                                  npix_ref=self.nrefpixels*2)
+                                  npix_ref=self.nrefpixels)
 
         lr_model = get_refpix_lr( data-ud_model[:, None, :], 
                                   self.npix_per_channel, 
@@ -131,7 +132,7 @@ class BaseRamp( ):
     
     @property
     def active_shape(self):
-        return self._actshape
+        return self._act_shape
     
     @property
     def frame_shape(self):

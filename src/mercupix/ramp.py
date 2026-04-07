@@ -434,7 +434,7 @@ class RawRamp(BaseRamp):
         if data is None : 
             return  self.data[:, self.actslice, self.actslice] - self.get_refpix_map(**kwargs)
         else : 
-            return data - self.get_refpix(data=data, **kwargs)[:,:,self.actslice]   
+            return data - self.get_refpix_map(data=data, **kwargs)[:,:,self.actslice]   
         
     def subtract_offset(self,
                         data=None, 
@@ -547,13 +547,16 @@ class RawRamp(BaseRamp):
         # See how this goes. 
         return mask
     
-    def get_saturated(self, data=None):
+    def get_saturated(self, data=None, threshold=0.75):
         """Identify saturated pixel in data.
 
         Parameters
         ----------
         data : ndarray, optional
             Data cube (N, Npix, Npix). by default None
+        threshold : float, optional
+            Threshold value to count pixel as in the saturation regime.
+            by default 0.75
             
         Returns:
             ndarray : Boolean (N, Npix, Npix) array where True means saturated pixels.
@@ -562,7 +565,7 @@ class RawRamp(BaseRamp):
         # In the future will probably apply percentage to this value.
         # cause this one is the maximum allowed.
         
-        return self.data == 65535
+        return self.data >= np.uint16(65535*threshold)
             
     def identify_cosmics(self, data=None): 
         """Identify cosmic track pixels.
@@ -685,7 +688,7 @@ class RawRamp(BaseRamp):
         var = 0
         if data is not None : 
             var = np.diff(data, axis=0) 
-            var /=np.diff(self.t_read)[:,None,None]
+            var /=np.diff(self.times)[:,None,None]
             var = np.var(var,ddof=1)
         
         return 0
@@ -744,7 +747,7 @@ class RawRamp(BaseRamp):
         """     
         
         if data is None : 
-            data = self.get_activecube()
+            data = self.data[:, self.actslice, self.actslice]
             
         if corr_refpix : 
             data= self.correct_refpix()

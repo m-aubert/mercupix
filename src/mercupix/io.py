@@ -205,7 +205,7 @@ def from_ip2i(filename, frame_path='/run/seq_1/asic_1/ramp_1', time_arr_path=Non
     tarr = f[time_arr_path]['time'] 
 
     tframe = np.diff(tarr).mean()
-    times = np.arange(1, cube.shape[0])*tframe
+    times = np.arange(1, data.shape[0])*tframe
     nchannels=32
     tgroup = None 
 

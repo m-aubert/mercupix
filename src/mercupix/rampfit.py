@@ -90,10 +90,11 @@ class LSQFit:
         self.polytype = polytype
         self.tarr = tarr
         if self.polytype == 'leg':
-            if tarr.min() == 0: 
-                self.tleg = tarr/tarr.max() * 2  - 1 #Pour legrendre Leander ver. -> assume t0 = 0 .
-            else : 
-                self.tleg = 2.*(tarr - tarr.min())/np.ptp(tarr)-1
+            self.tleg = tarr/tarr.max() * 2  - 1 
+            #if tarr.min() == 0: 
+            #    self.tleg = tarr/tarr.max() * 2  - 1 #Pour legrendre Leander ver. -> assume t0 = 0 .
+            #else : 
+            #    self.tleg = 2.*(tarr - tarr.min())/np.ptp(tarr)-1
 
     def poly_(self, deg=3, poly='mono'):
         if poly == "leg" : 
