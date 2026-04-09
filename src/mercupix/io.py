@@ -191,7 +191,7 @@ def from_pyxim(filename):
         nchannels = header['NCHAN']
             
     tframe = np.diff(times).mean()
-    tgroup = None
+    tgroup = np.diff(times).mean()
     return data, tframe, tgroup, nchannels, times
 
 def from_ip2i(filename, frame_path='/run/seq_1/asic_1/ramp_1', time_arr_path=None):
