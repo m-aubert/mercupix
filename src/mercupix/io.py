@@ -188,7 +188,7 @@ def from_pyxim(filename):
     with fits.open(filename) as hdul : 
         data = hdul[0].data
         times = hdul[1].data['readout_times']
-        nchannels = header['NCHAN']
+        nchannels = hdul[0].header['NCHAN']
             
     tframe = np.diff(times).mean()
     tgroup = np.diff(times).mean()
