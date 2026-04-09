@@ -17,8 +17,8 @@ class LSQFit():
     @classmethod
     def from_rawramp(cls, rawramp, **kwargs):
         """ """
-        datacube, varcube, mask = rampdata.preprocess_ramp(**kwargs)
-        return cls(data=datacube, times=rampdata.t_read)
+        datacube, varcube, mask = rawramp.preprocess_ramp(**kwargs)
+        return cls(data=datacube, times=rawramp.times)
         
     # ================ #
     #   method         #
@@ -281,3 +281,4 @@ class LSQFit():
     def polynome_coefs(self):
         """ """
         return self._polynome.get("coefs", None)
+
