@@ -24,7 +24,7 @@ dependencies = [
   "numpy",
   "h5py", 
   "scipy",
-  "skimage"]
+  "scikit-image"]
 
 [project.urls]
 Source = "https://github.com/m-aubert/mercupix"

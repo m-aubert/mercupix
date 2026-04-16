@@ -15,10 +15,10 @@ class LSQFit():
 
         
     @classmethod
-    def from_rawramp(cls, rawramp, **kwargs):
+    def from_rawramp(cls, rawramp, degree=5, polytype='leg', **kwargs):
         """ """
         datacube, varcube, mask = rawramp.preprocess_ramp(**kwargs)
-        return cls(data=datacube, times=rawramp.times)
+        return cls(data=datacube, times=rawramp.times, degree=5, polytype='leg')
         
     # ================ #
     #   method         #
@@ -44,7 +44,7 @@ class LSQFit():
     # ------- #
     # GETTER  # 
     # ------- #
-    def get_times(self, as_fitted=False, polytype=None):
+    def get_times(self, as_fitted=True, polytype=None):
         """ """
         if not as_fitted:
             return self.times
