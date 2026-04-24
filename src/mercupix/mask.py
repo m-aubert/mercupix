@@ -1,6 +1,6 @@
 import numpy as np 
 import warnings
-from astropy import mad_std
+from astropy.stats import mad_std
 import bottleneck as bn  # For rolling median etc but useless actually.
 
 _MASK_DTYPE = 'uint8' 
