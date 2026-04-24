@@ -416,6 +416,25 @@ class RawRamp(BaseRamp):
     Ramp class that process Raw data.
     """    
     
+    def _from_header_to_metadata(header): 
+        """
+        To be filled function. 
+        Processes data header to extract metadata.
+        
+        Parameters
+        ----------
+        header : fits.Header object.
+        
+        Returns
+        -------
+        
+        dict 
+            Dict-like object with stored metadata.
+            Path to reference files: 
+                e.g : caracterisation files and external data needed for processing
+        """
+        pass 
+    
     def correct_refpix(self, data=None, **kwargs):
         """Apply reference pixel correction
 
@@ -498,11 +517,11 @@ class RawRamp(BaseRamp):
             A shape (N, Nactpix, Nactpix) bitmask.
         """        
         # Initialize mask
-        mask = np.zeros(self.active_shape, dtype='int8')
+        mask = np.zeros(self.active_shape, dtype='uint8')
 
         if estimate_mask : 
             if disconnected : 
-                mask = self.get_downpix()
+                mask += self.get_downpix()
             
             if noisy : 
                 mask += self.get_noisy()
@@ -511,98 +530,89 @@ class RawRamp(BaseRamp):
                 mask += self.get_saturated()
             
             if cosmics : 
-                mask += self.identify_cosmics()
+                mask += self.get_cosmics()
 
             if mask.sum() == 0 : 
                 from astropy.stats import sigma_clip
                 
                 maskdata = sigma_clip(self.data, sigma=17, axis=(1,2))
-                mask = maskdata.mask.astype('int8')
-            #if persistence: 
-            #    mask &= self.get_persistence_pixels()
-            
+                mask = maskdata.mask.astype('uint8')
+                            
         return mask
         
-    def get_noisy(self, data=None):
-        """ Get identified noisy pixel in data.
+    # def get_noisy(self, data=None):
+    #     """ Get identified noisy pixel in data.
 
-        Parameters
-        ----------
-        data : ndarray, optional
-            Data cube (N, Npix, Npix). by default None
+    #     Parameters
+    #     ----------
+    #     data : ndarray, optional
+    #         Data cube (N, Npix, Npix). by default None
 
-        Returns
-        -------
-        ndarray
-            Boolean (N, Npix, Npix) array where True means noisy pixels.
-        """
-        # Boolean
-        # Get noisy pixels as bitmap or as boolean ?
-        from astropy.stats import sigma_clip
+    #     Returns
+    #     -------
+    #     ndarray
+    #         Boolean (N, Npix, Npix) array where True means noisy pixels.
+    #     """
+    #     # Boolean
+    #     # Get noisy pixels as bitmap or as boolean ?
+    #     from astropy.stats import sigma_clip
             
-        maskdata = sigma_clip(self.data, sigma=17, axis=(1,2))
-        mask = maskdata.mask
-        # For now this identifies noisy pixels in terms of delta. 
-        # Sigma_clipping along time axis might help in detecting whacky pixels as well ?
-        # See how this goes. 
-        return mask
+    #     maskdata = sigma_clip(self.data, sigma=17, axis=(1,2))
+    #     mask = maskdata.mask
+    #     # For now this identifies noisy pixels in terms of delta. 
+    #     # Sigma_clipping along time axis might help in detecting whacky pixels as well ?
+    #     # See how this goes. 
+    #     return mask
     
-    def get_saturated(self, data=None, threshold=0.75):
-        """Identify saturated pixel in data.
+    # def get_saturated(self, data=None, threshold=0.75):
+    #     """Identify saturated pixel in data.
 
-        Parameters
-        ----------
-        data : ndarray, optional
-            Data cube (N, Npix, Npix). by default None
-        threshold : float, optional
-            Threshold value to count pixel as in the saturation regime.
-            by default 0.75
+    #     Parameters
+    #     ----------
+    #     data : ndarray, optional
+    #         Data cube (N, Npix, Npix). by default None
+    #     threshold : float, optional
+    #         Threshold value to count pixel as in the saturation regime.
+    #         by default 0.75
             
-        Returns:
-            ndarray : Boolean (N, Npix, Npix) array where True means saturated pixels.
+    #     Returns:
+    #         ndarray : Boolean (N, Npix, Npix) array where True means saturated pixels.
 
-        """
-        # In the future will probably apply percentage to this value.
-        # cause this one is the maximum allowed.
+    #     """
+    #     # In the future will probably apply percentage to this value.
+    #     # cause this one is the maximum allowed.
+    #     if data is None : 
+    #         data = self.data[:, self.actslice, self.actslice]
+            
+    #     mask = mask np.uint16(65535*threshold)
+
+    #     saturated_pixels = np.zeros(data.shape, dtype='uint8') 
+    #     mask = np.uint16(65535*threshold)
+
+    #     saturated_pixels = self.data[:,self.actslice, self.actslice] >= np.uint16(65535*threshold)
         
-        return self.data >= np.uint16(65535*threshold)
-            
-    def identify_cosmics(self, data=None): 
-        """Identify cosmic track pixels.
+    #     return 
+                
+    # def get_downpix(self, path=None):
+    #     """Recover pixels markes as dark/disconnected.
 
-        Parameters
-        ----------
-        data : ndarray, optional
-            Data cube (N, Npix, Npix). by default None
+    #     Parameters
+    #     ----------
+    #     path (str, optional) : Path to disconnected pixel mask from metadata.
+    #         Data cube (N, Npix, Npix). by default None
             
-        Returns:
-            ndarray : Boolean (N, Npix, Npix) array where True means cosmic.
-        """
-        # Boolean
-        # Brandt provides something in the fit.
-        # Look at how it is implemented.
-        # Despite jumps.
-        # Flag likely cosmic -> might help in detecting the jumps.
-        # Additionnaly -> levels & endpoints in terms of ADU might help in flagging persistence
-        # Snowball events & all could lead to high high fluxes.
-        return True
-    
-    def get_downpix(self, path=None):
-        """Recover pixels markes as dark/disconnected.
-
-        Parameters
-        ----------
-        path (str, optional) : Path to disconnected pixel mask from metadata.
-            Data cube (N, Npix, Npix). by default None
-            
-        Returns
-        -------
-            ndarray : Boolean (N, Npix, Npix) array where True means disconnected.
-        """
-        from .io import load_downpix
-        # path tbd
-        mask = load_downpix(path=path)
-        return mask
+    #     Returns
+    #     -------
+    #         ndarray : Boolean (N, Npix, Npix) array where True means disconnected.
+    #     """
+    #     from .io import load_downpix
+    #     # path tbd
+    #     if path is None : 
+    #         mask = load_downpix(path=path)
+    #     else : 
+    #         mask = np.zeros((self.ngroups, *self.active_shape), dtype='uint8')
+        
+    #     return mask
      
     
     def correct_ipc(self, data=None, 
