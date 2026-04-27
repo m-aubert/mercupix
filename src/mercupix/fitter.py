@@ -352,18 +352,16 @@ class Brandt2024(Fitter):
     """
     def __init__(self, data, times=None,  readnoise=11, timeframe=None,
                  add_reset=False, countrateguess=None, reset=False, nframes_list = []):
-        super.__init__(data, times=times)
+        super.__init__(self, data, times=times)
         
         self.readnoise = np.atleast_1d(readnoise)     
         self.ti = times
                 
         # Add support for masked array   
-        diff = np.ma.diff if isinstance(data, np.ma.MaskedArray) else np.diff
-        append = np.ma.append if isinstance(data, np.ma.MaskedArray) else np.append        
         self.ismasked = True if isinstance(data, np.ma.MaskedArray) else False         
                 
-        self.diffti = diff(times)
-        self.diffgp = diff(data,axis=0)      
+        self.diffti = np.diff(times)
+        self.diffgp = np.diff(data,axis=0)      
         
         self.data = data # Unsure for that, no so memory efficient.
         
@@ -379,7 +377,10 @@ class Brandt2024(Fitter):
         self.reset = reset
         self.add_reset = add_reset if self.reset else False
         
+        
         if self.add_reset : 
+            append = np.ma.append if isinstance(data, np.ma.MaskedArray) else np.append        
+
             self.diffgp = append(([data[0]/self.ti[0]]), self.diffgp, axis=0)
             self.diffti = append(np.array([self.ti[0]]) , self.diffti, axis=0)
 
@@ -391,9 +392,9 @@ class Brandt2024(Fitter):
 
         if countrateguess is None : 
             if self.add_reset: 
-                countrateguess = self.diffd[1:].sum(axis=0)
+                countrateguess = self.diffd[1:].mean(axis=0)
             else : 
-                countrateguess = self.diffd.sum(axis=0)
+                countrateguess = self.diffd.mean(axis=0)
                 
         self.alpha, self.beta = self.get_covar(countrateguess)
                 
@@ -541,7 +542,7 @@ class Brandt2024(Fitter):
     @property
     def PhiD(self):
         if not hasattr(self, '_PhiD'):
-            PhiD = np.ma.ones_like(self.diffd) if self.ismasked else np.ones_like(self.diffd)
+            PhiD = np.ones_like((self.ndiff, *self.npix))
             PhiD[-1] = 0
             PhiD[:-1] *= self.beta[:,None] 
             for i in range(self.ndiff - 2, -1, -1):
@@ -551,13 +552,8 @@ class Brandt2024(Fitter):
 
     @property
     def theta(self):
-        if not hasattr(self, '_theta'):
-            if self.ismasked : 
-                theta = np.ma.ones_like(self.diffd)
-                theta = np.append(np.ones(1, self.npix), axis=0).astype("float32") # Conserve mask
-            
-            else :                 
-                theta = np.ones((self.ndiff+1, *self.npix)).astype("float32")
+        if not hasattr(self, '_theta'): 
+            theta = np.ones((self.ndiff+1, *self.npix))
                  
             theta[1] = self.alpha[1]
             for i in range(2,self.ndiff+1):
@@ -570,13 +566,7 @@ class Brandt2024(Fitter):
     @property
     def phi(self):
         if not hasattr(self, '_phi'):
-            if self.ismasked : 
-                phi = np.ma.ones_like(self.diffd)
-                phi = np.append(np.ones(1, *self.npix), axis=0).astype("float32") # Conserve mask
-            
-            else :                 
-                phi = np.ones((self.ndiff+1, *self.npix)).astype("float32")
-                 
+            phi = np.ones((self.ndiff+1, *self.npix))
             phi[-2] = self.alpha[-1]
             for i in range(self.ndiff-2, -1, -1):
                 phi[i] = self.alpha[i] * phi[i+1] - self.beta[i]**2 * phi[i+2]
@@ -588,8 +578,7 @@ class Brandt2024(Fitter):
     @property
     def Phi(self):
         if not hasattr(self, '_Phi'):
-            Phi = np.ma.zeros_like(self.diffd) if self.ismasked else np.zeros_like(self.diffd)
-            Phi = Phi.astype("float32")
+            Phi = np.zeros_like((self.ndiff, *self.npix))
             for i in range(self.ndiff-2, -1, -1):
                 Phi[i] = self.beta[i]*Phi[i+1] + self.sign[i+1]*self.beta[i]*self.phi[i+2]
                 
@@ -600,9 +589,7 @@ class Brandt2024(Fitter):
     @property
     def Theta(self):
         if not hasattr(self, '_Theta'):
-            Theta = np.ma.zeros_like(self.diffd) if self.ismasked else np.zeros_like(self.diffd)
-            Theta = Theta.astype("float32") 
-            
+            Theta = np.zeros_like((self.ndiff, *self.npix))            
             Theta[0] = -self.theta[0]
             
             for i in range(1,self.ndiff):
@@ -614,13 +601,8 @@ class Brandt2024(Fitter):
             
     @property
     def ThetaD(self):
-        if not hasattr(self, '_ThetaD'):
-            if self.ismasked : 
-                ThetaD = np.ma.zeros_like(self.diffd)
-                ThetaD = np.append(np.zeros(1, self.npix), axis=0).astype("float32") # Conserve mask
-            
-            else :                 
-                ThetaD = np.zeros((self.ndiff+1, *self.npix)).astype("float32")
+        if not hasattr(self, '_ThetaD'): 
+            ThetaD = np.zeros((self.ndiff+1, *self.npix)).astype("float32")
                              
             ThetaD[1] = -self.diffd[0] * self.theta[0]
             for i in range(1,self.ndiff):
@@ -644,7 +626,7 @@ class Kubik2015(Fitter):
             t_frame (float): The time per frame.
             macc (tuble, optional): MACC mode for data acquisition. Defaults to None.
         """
-        self.diff = np.diff(data, axis=0) if not isinstance(data, np.ma.MaskedArray) else np.ma.diff(data, axis=0)
+        self.diff = np.diff(data, axis=0)
         self.tpf = np.diff(times).mean() #Time/frame.
         if macc is not None : 
             self.ng, self.nf, self.nd = macc

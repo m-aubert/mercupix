@@ -158,8 +158,11 @@ def get_cosmics(data, to_mask=None, threshold_mad=9, threshold_std=5):
     return mask 
         
 def get_zscores(data, threshold_mad=9, threshold_std=5) :
-    z_mad = (data - np.median(data, axis=0, keepdims=True) )/mad_std(data, axis=0)
-    z_std = (data - np.median(data, axis=0, keepdims=True) )/data.std(axis=0, ddof=1, keepdims=True)
+    np_= np.ma if isinstance(data, np.ma.MaskedArray) else np 
+        
+    
+    z_mad = (data - np_.median(data, axis=0, keepdims=True) )/mad_std(data, axis=0)
+    z_std = (data - np_.median(data, axis=0, keepdims=True) )/data.std(axis=0, ddof=1, keepdims=True)
     
     mask = (z_mad >= threshold_mad) & (z_std >= threshold_std)
     return mask
