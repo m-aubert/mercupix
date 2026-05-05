@@ -1,69 +1,16 @@
 import numpy as np 
 import warnings
 from astropy.stats import mad_std
-import bottleneck as bn  # For rolling median etc but useless actually.
 
 _MASK_DTYPE = 'uint8' 
 
 _BITFLAGS_DICT = dict(DIS=1,
                       CR=2,
                       SATURATED= 4,
-                      HOT=8)    
+                      HOT=8,
+                      WARM=16)    
 
-
-def get_mask(
-            disconnected=True,
-            cosmics=False, 
-            saturated=False,
-            hotpix=False, 
-            estimate_mask=False): 
-        """Create a bitmask map of the ramp
-
-        Parameters
-        ----------
-        disconnected : bool, optional
-            Track disconnected or dark pixels, by default True
-        cosmics : bool, optional
-            Track cosmic tracks, by default False
-        saturated : bool, optional
-            Track saturated pixels, by default False
-        noisy : bool, optional
-            Track noisy or hot pixels, by default False
-        estimate_mask : bool, optional
-            Whether to estimate mask, by default False.
-            Overrides all keyword parameters. 
-            
-        Returns
-        -------
-        ndarray
-            A shape (N, Nactpix, Nactpix) bitmask.
-        """        
-        # Initialize mask
-        mask = np.zeros(active_shape, dtype='uint8')
-
-        if estimate_mask : 
-            if disconnected : 
-                mask += get_downpix() # From carac & to be udated in time
-            
-            if hotpix : 
-                mask += get_hotpix() # From carac & to be udated in time
-                
-            if saturated : 
-                mask += get_saturated()
-            
-            if cosmics : 
-                mask += get_cosmics()
-
-            if mask.sum() == 0 : 
-                from astropy.stats import sigma_clip
-                
-                maskdata = sigma_clip(self.data, sigma=17, axis=(1,2))
-                mask = maskdata.mask.astype('uint8')
-                            
-        return mask
-    
-
-def get_saturated(data=None):
+def get_saturated(data=None, threshold=1):
     """Identify saturated pixel in data.
 
     Parameters
@@ -76,7 +23,7 @@ def get_saturated(data=None):
 
     """
     saturated_pixels = np.zeros(data.shape, dtype=_MASK_DTYPE) 
-    mask = data == 65535
+    mask = data >= int(threshold*65535)
     saturated_pixels[mask] = _BITFLAGS_DICT['SATURATED']
     
     return saturated_pixels
@@ -148,12 +95,12 @@ def get_cosmics(data, to_mask=None, threshold_mad=9, threshold_std=5):
     else : 
         data_ = np.ma.array(np.diff(data, axis=0), mask=to_mask[1:])
         zscore = get_zscores(data_, threshold_mad=threshold_mad, threshold_std=threshold_std)
-        zscore = mask.data & ~to_mask[1:]
+        zscore = zscore & ~to_mask[1:]
     
     # Special treatment for first frame.
     mask_frame0 = sigma_clip(data[0], cenfunc='median', stdfunc='mad_std', sigma_lower=100000, sigma_upper=threshold_mad)
 
-    mask[np.stack([mask_frame0.mask , zscore])] = _BITFLAGS_DICT['CR']    
+    mask[np.concatenate([mask_frame0.mask[None,:] , zscore], axis=0)] = _BITFLAGS_DICT['CR']    
     
     return mask 
         
@@ -167,4 +114,58 @@ def get_zscores(data, threshold_mad=9, threshold_std=5) :
     mask = (z_mad >= threshold_mad) & (z_std >= threshold_std)
     return mask
             
-        
+def detect_hotpix(dark_slope, warm_threshold=0.15, hot_threshold=0.5):
+    """
+    Raw hot pixel detection from dark slope.
+    
+    Thresholds from Roman. Also need linearity tests.
+
+    Parameters
+    ----------
+    dark_slope : ndarray
+        (Nactpix, Nactpix) dark slope
+    warm_threshold : float, optional
+        Warm pixel detection threshold, by default 0.1
+    hot_threshold : float, optional
+        Hot pixel detection threshold, by default 0.5
+
+    Returns
+    -------
+    ndarray
+        Bitmask of hot & warm pixel
+    """
+
+    mask = np.zeros(dark_slope.shape, _MASK_DTYPE)
+    mask[(dark_slope >= warm_threshold) & (dark_slope <hot_threshold )] = _BITFLAGS_DICT['WARM']
+    mask[(dark_slope >= hot_threshold)] = _BITFLAGS_DICT['HOT']
+
+    # Missing : 
+    # Wacky pixels and linearity requirements
+    # Stacked darks data.
+    # What else ?
+    
+    return mask 
+
+def detect_rc(data):
+    """
+    Detect RC pixels in Dark
+    
+    Thresholds from Roman. Also need linearity tests.
+
+    Parameters
+    ----------
+    dark_slope : ndarray
+        (Nactpix, Nactpix) dark slope
+    warm_threshold : float, optional
+        Warm pixel detection threshold, by default 0.1
+    hot_threshold : float, optional
+        Hot pixel detection threshold, by default 0.5
+
+    Returns
+    -------
+    ndarray
+        Bitmask of hot & warm pixel
+    """
+    pass
+
+
