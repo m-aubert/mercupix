@@ -266,17 +266,13 @@ class RawRamp(BaseRamp):
             Bitmask of datacube.shape (N,Npix,Npix) if mask is True. 
             If mask is False, bitmask is 0 everywhere.
         """     
-        # First thing to do
-        if corr_refpix : 
-            data = self.correct_refpix(data=data)
-        
-        if data is None : 
-            # Implies that corr_refpix didn't happen.
-            data = self.data[:, self.actslice, self.actslice].astype("float32")
-                                    
+
         if corr_refpix : 
             data = self.correct_refpix(data=data)
 
+        if data is None : 
+            data = self.data[:, self.actslice, self.actslice].astype("float32")
+                                
         if corr_offset :             
             data= self.subtract_offset(data=data,
                                             metadata=metadata,
