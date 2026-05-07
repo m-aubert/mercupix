@@ -45,7 +45,7 @@ def get_downpix(path=None):
     if path is not None : 
         mask = load_downpix(path=path)
     else : 
-        warnings.warn('No disconnected pixel map provided. No DIS Mask.')
+        warnings.warn('No disconnected pixel map provided. \n No DIS Mask.')
         mask = 0
                 
     return mask
@@ -66,14 +66,15 @@ def get_hotpix(data=None, path=None, **kwargs):
     # Boolean
     # Get noisy pixels as bitmap or as boolean ?
     
-    if path is None : 
-        mask = detect_hotpix(data, **kwargs)
-        
-    else : 
+    if path is not None : 
         from .io import load_hotpix
         mask = load_hotpix(path)
-        
-    return mask 
+    else : 
+        warnings.warn("No hot pixel map provided. \n"+ \
+                      "No HOT and WARM Mask.")
+        mask = 0
+         
+    return mask
 
 def get_cosmics(data, to_mask=None, cr_threshold_mad=9, cr_threshold_std=5):
     from astropy.stats import sigma_clip 

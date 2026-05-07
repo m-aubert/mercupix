@@ -117,23 +117,16 @@ class RawRamp(BaseRamp):
 
         if disconnected : 
             from .mask import get_downpix
-            mask += get_downpix()
+            path = None if self.metadata is None else self.metadata['path']['DIS'] 
+            mask += get_downpix(path=path)
         
         if hot : 
             from .mask import get_hotpix 
-            # flag hot and warm
-            path = None if self.metadata is None else self.metadata['path']['hotpix']  #Temp organisation idea.
-            data_tmp = None
-            if path is None :     
-                # Temporary solution in case no dark_slope available.
-                data_tmp = np.diff(data, axis=0)/np.diff(self.times)[:,None,None]
-                
-            mask += get_hotpix(data=data_tmp, path=path,
-                               warm_threshold=warm_threshold,
-                               hot_threshold=hot_threshold)
-            
-            del data_tmp  # Saving mem
-            
+            # flag hot and warm 
+            path = None if self.metadata is None else self.metadata['path']['HOT'] 
+            mask += get_hotpix(path=path, warm_threshold=warm_threshold,
+                                hot_threshold=hot_threshold)
+                        
         if saturated: 
             from .mask import get_saturated
             # raw uint16 input
