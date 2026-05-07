@@ -2,15 +2,15 @@ import numpy as np
 import warnings
 from astropy.stats import mad_std
 
-_MASK_DTYPE = 'uint8' 
 
+_MASK_DTYPE = 'uint8' 
 _BITFLAGS_DICT = dict(DIS=1,
                       CR=2,
                       SATURATED= 4,
                       HOT=8,
                       WARM=16)    
 
-def get_saturated(data=None, threshold=1):
+def get_saturated(data=None, sat_threshold=1):
     """Identify saturated pixel in data.
 
     Parameters
@@ -23,7 +23,7 @@ def get_saturated(data=None, threshold=1):
 
     """
     saturated_pixels = np.zeros(data.shape, dtype=_MASK_DTYPE) 
-    mask = data >= int(threshold*65535)
+    mask = data >= int(sat_threshold*65535)
     saturated_pixels[mask] = _BITFLAGS_DICT['SATURATED']
     
     return saturated_pixels
@@ -50,7 +50,7 @@ def get_downpix(path=None):
                 
     return mask
 
-def get_hotpix(data=None, path=None):
+def get_hotpix(data=None, path=None, **kwargs):
     """ Get identified noisy pixel in data.
 
     Parameters
@@ -67,7 +67,7 @@ def get_hotpix(data=None, path=None):
     # Get noisy pixels as bitmap or as boolean ?
     
     if path is None : 
-        mask = detect_hotpix(data)
+        mask = detect_hotpix(data, **kwargs)
         
     else : 
         from .io import load_hotpix
@@ -75,21 +75,26 @@ def get_hotpix(data=None, path=None):
         
     return mask 
 
-def get_cosmics(data, to_mask=None, threshold_mad=9, threshold_std=5):
+def get_cosmics(data, to_mask=None, cr_threshold_mad=9, cr_threshold_std=5):
     from astropy.stats import sigma_clip 
     
     mask = np.zeros(data.shape, _MASK_DTYPE)
     
     if to_mask is None : 
-        zscore = get_zscores(np.diff(data, axis=0), threshold_mad=threshold_mad, threshold_std=threshold_std)
+        zscore = get_zscores(np.diff(data, axis=0),
+                             threshold_mad=cr_threshold_mad, 
+                             threshold_std=cr_threshold_std)
     
     else : 
         data_ = np.ma.array(np.diff(data, axis=0), mask=to_mask[1:])
-        zscore = get_zscores(data_, threshold_mad=threshold_mad, threshold_std=threshold_std)
+        zscore = get_zscores(data_, 
+                             threshold_mad=cr_threshold_mad, 
+                             threshold_std=cr_threshold_std)
         zscore = zscore & ~to_mask[1:]
     
     # Special treatment for first frame.
-    mask_frame0 = sigma_clip(data[0], cenfunc='median', stdfunc='mad_std', sigma_lower=100000, sigma_upper=threshold_mad)
+    mask_frame0 = sigma_clip(data[0], cenfunc='median', stdfunc='mad_std', 
+                             sigma_lower=100000, sigma_upper=cr_threshold_mad)
 
     mask[np.concatenate([mask_frame0.mask[None,:] , zscore], axis=0)] = _BITFLAGS_DICT['CR']    
     
@@ -127,8 +132,8 @@ def detect_hotpix(dark_slope, warm_threshold=0.15, hot_threshold=0.5):
     """
 
     mask = np.zeros(dark_slope.shape, _MASK_DTYPE)
-    mask[(dark_slope >= warm_threshold) & (dark_slope <hot_threshold )] = _BITFLAGS_DICT['WARM']
-    mask[(dark_slope >= hot_threshold)] = _BITFLAGS_DICT['HOT']
+    mask[(dark_slope >= warm_threshold) & (dark_slope <hot_threshold )] += _BITFLAGS_DICT['WARM']
+    mask[(dark_slope >= hot_threshold)] += _BITFLAGS_DICT['HOT']
 
     # Missing : 
     # Wacky pixels and linearity requirements

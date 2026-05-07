@@ -130,7 +130,7 @@ class RawRamp(BaseRamp):
                 
             mask += get_hotpix(data=data_tmp, path=path,
                                warm_threshold=warm_threshold,
-                               hot_threshold=warm_threshold)
+                               hot_threshold=hot_threshold)
             
             del data_tmp  # Saving mem
             
