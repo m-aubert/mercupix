@@ -12,7 +12,7 @@ class Fitter():
             times = np.arange(data.shape[0])
                 
     @classmethod
-    def from_rawramp(cls, rawramp, ramp_kwargs=None, **kwargs):
+    def from_rawramp(cls, rawramp, ramp_kwargs=dict(), **kwargs):
         """ """
         datacube, varcube, mask = rawramp.preprocess_ramp(**ramp_kwargs)
         return cls(data=datacube, times=rawramp.times, **kwargs)
@@ -91,7 +91,7 @@ class LSQFit(Fitter):
         
     def set_times(self, times):
         """ """
-        self._times = np.asarray(times, dtype="float")
+        self._times = np.asarray(times, dtype="float32")
         self._hcached_fitted_times = None
 
     # ------- #
@@ -218,7 +218,7 @@ class LSQFit(Fitter):
                     times = times.reshape([times.shape[0] ]+ [1, ]*missing_dims)
                         
                 elif slope.ndim == 2:
-                    times = float(self.times.max())
+                    times = np.float32(self.times.max())
                 else:
                     # let's assume user know what they are doing.
                     pass
@@ -238,9 +238,7 @@ class LSQFit(Fitter):
         if polytype in ["leg", "legendre", "herm", "hermite"]:
             tmin, tmax = 0, np.max(times)
             times = ((times-tmin) / (tmax-tmin))*2 -1
-        else:
-            raise NotImplementedError("Unknown {polytype=} (legendre or hermite implemented).")
-
+            
         return times
 
     @staticmethod
@@ -264,12 +262,12 @@ class LSQFit(Fitter):
             pol = np.stack([hermitenorm(i)(xnormed) for i in range(degree+1)])
             
         elif polytype in ["mono", "monomial"]:
-            pol = np.stack([xnormed**2 for i in range(degree+1)])
+            pol = np.stack([xnormed**i for i in range(degree+1)])
 
         else: 
             raise NotImplementedError("Unknown {polytype=} (legendre or hermite implemented)")
 
-        return pol
+        return pol.astype("float32")
     
     @classmethod
     def _polynome_of_times(cls, times, degree, polytype):
