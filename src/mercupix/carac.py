@@ -3,6 +3,36 @@ import numpy as np
 # Utils func
 def get_ptc(data):
     return data.mean(axis=(1,2)) , data.std(axis=(1,2), ddof=1) 
+
+
+def get_psd(ramp, data=None, channel=0, frame=0, corr_refpix=True, pad=12, readout_freq=203_000): 
+    if data is None : 
+        data = ramp.preprocess_ramp(corr_refpix=corr_refpix)[0]
+
+    slice_ = ramp.actslice if corr_refpix else slice(0,ramp.frame_shape[0])
+    offset_up, offset_down = 0,0
+
+    slice_channel = slice(channel*ramp.npix_per_channel+offset_up , 
+                          (channel+1)*ramp.npix_per_channel-offset_down,1)
+
+    if corr_refpix :
+        if channel == 0 : 
+            offset_up, offset_down = ramp.nrefpixels,0
+            slice_channel = slice(0, ramp.npix_per_channel-ramp.nrefpixels) 
+
+        if channel == ramp.nchannels-1:
+            offset_up, offset_down = 0,ramp.nrefpixels
+            slice_channel = slice(channel*ramp.npix_per_channel-offset_down, ramp.active_shape[1]) 
+            
+    psdsraw = []
+    for i in range(0, ramp.ngroups):
+        test = np.zeros((ramp.frame_shape[0], ramp.npix_per_channel+pad), dtype='float32') 
+        test[slice_, offset_up:ramp.npix_per_channel-offset_down] = data[i, :, slice_channel] if channel%2 == 0 else data[i, :, slice_channel][:,::-1]
+        test = test.flatten()
+        psdsraw.append((np.abs(np.fft.rfft(test))**2*1./readout_freq * 1./test.size*2).astype('float32'))
+
+    k = np.fft.rfftfreq(test.size, 1./readout_freq)
+    return k , np.asarray(psdsraw)
     
 # Classical NL carac.
 class ClassicalNL : 
