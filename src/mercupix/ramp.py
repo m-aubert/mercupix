@@ -112,9 +112,9 @@ class RawRamp(BaseRamp):
         ndarray
             A shape (N, Nactpix, Nactpix) bitmask.
         """        
-        # Initialize mask
+        # Initialize mask 
         mask = np.zeros(self.active_shape, dtype='uint8')
-
+        
         if disconnected : 
             from .mask import get_downpix
             path = None if self.metadata is None else self.metadata['path']['DIS'] 
@@ -124,14 +124,15 @@ class RawRamp(BaseRamp):
             from .mask import get_hotpix 
             # flag hot and warm 
             path = None if self.metadata is None else self.metadata['path']['HOT'] 
-            mask += get_hotpix(path=path, warm_threshold=warm_threshold,
-                                hot_threshold=hot_threshold)
+            mask += get_hotpix(path=path, 
+                               warm_threshold=warm_threshold,
+                               hot_threshold=hot_threshold)
                         
         if saturated: 
             from .mask import get_saturated
-            # raw uint16 input
+            # raw uint16 input, expands mask dims here.
             mask += get_saturated(self.data,
-                                  sat_threshold=sat_threshold) 
+                                  sat_threshold=sat_threshold)[:, self.actslice, self.actslice] 
         
         if cosmics : 
             from .mask import get_cosmics

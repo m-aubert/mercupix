@@ -34,7 +34,7 @@ def get_downpix(path=None):
     Parameters
     ----------
     path (str, optional) : Path to disconnected pixel mask from metadata.
-        Data cube (N, Npix, Npix). by default None
+        Data cube (Npix, Npix). by default None
         
     Returns
     -------
@@ -61,7 +61,7 @@ def get_hotpix(data=None, path=None, **kwargs):
     Returns
     -------
     ndarray
-        Boolean (N, Npix, Npix) array where True means noisy pixels.
+        Boolean (Npix, Npix) array where True means noisy pixels.
     """
     # Boolean
     # Get noisy pixels as bitmap or as boolean ?
