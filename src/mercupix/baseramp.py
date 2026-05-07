@@ -136,7 +136,7 @@ class BaseRamp( ):
     
     @property
     def frame_shape(self):
-        return self._frameshape
+        return self._frame_shape
     
     @property
     def actslice(self):

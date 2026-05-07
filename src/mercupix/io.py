@@ -4,7 +4,6 @@ from astropy.io import fits
 import h5py
 
 
-
 def fetch_metadata(path=None):
     """Method to get metadata from path
 
