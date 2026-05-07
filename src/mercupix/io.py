@@ -161,13 +161,14 @@ def get_previous_exposure(metadata):
 
 
 def load_data(filepath):
-        
     #Use filepath and process those. Should return stuff.
     #Very general function, probably should create a general purpose METADATA class.
-
     data=0
     return data
 
+def load_hotpix(filepath):
+    return 0 
+    
 ## -------------- ##
 ## RAMP I/O Utils ##
 ## -------------- ##

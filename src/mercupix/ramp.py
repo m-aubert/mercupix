@@ -6,7 +6,7 @@ class RawRamp(BaseRamp):
     """
     Ramp class that process Raw data.
     """    
-    
+
     def _from_header_to_metadata(header): 
         """
         To be filled function. 
@@ -25,7 +25,11 @@ class RawRamp(BaseRamp):
                 e.g : caracterisation files and external data needed for processing
         """
         pass 
-    
+
+    @property
+    def metadata(self): 
+        return None
+        
     def correct_refpix(self, data=None, **kwargs):
         """Apply reference pixel correction
 
@@ -84,7 +88,12 @@ class RawRamp(BaseRamp):
                  disconnected=True,
                  cosmics=False, 
                  saturated=False,
-                 hot=False): 
+                 hot=False,
+                 warm_threshold=0.15, 
+                 hot_threshold=0.5,
+                 sat_threshold=1.,
+                 cr_threshold_mad=9,
+                 cr_threshold_std=5): 
         """Create a bitmask map of the ramp
 
         Parameters
@@ -113,16 +122,30 @@ class RawRamp(BaseRamp):
         if hot : 
             from .mask import get_hotpix 
             # flag hot and warm
-            mask += get_hotpix(data=data)
+            path = None if self.metadata is None else self.metadata['path']['hotpix']  #Temp organisation idea.
+            data_tmp = None
+            if path is None :     
+                # Temporary solution in case no dark_slope available.
+                data_tmp = np.diff(data, axis=0)/np.diff(self.times)[:,None,None]
+                
+            mask += get_hotpix(data=data_tmp, path=path,
+                               warm_threshold=warm_threshold,
+                               hot_threshold=warm_threshold)
             
-        if saturated : 
+            del data_tmp  # Saving mem
+            
+        if saturated: 
             from .mask import get_saturated
             # raw uint16 input
-            mask += get_saturated(self.data) 
+            mask += get_saturated(self.data,
+                                  sat_threshold=sat_threshold) 
         
         if cosmics : 
             from .mask import get_cosmics
-            mask += get_cosmics(data=data, to_mask=mask)
+            mask += get_cosmics(data=data, 
+                                to_mask=mask,
+                                cr_threshold_mad=cr_threshold_mad,
+                                cr_threshold_std=cr_threshold_std)
                         
         return mask
         

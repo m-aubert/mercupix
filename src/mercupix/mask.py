@@ -50,7 +50,7 @@ def get_downpix(path=None):
                 
     return mask
 
-def get_hotpix(self, data=None):
+def get_hotpix(data=None, path=None):
     """ Get identified noisy pixel in data.
 
     Parameters
@@ -65,24 +65,15 @@ def get_hotpix(self, data=None):
     """
     # Boolean
     # Get noisy pixels as bitmap or as boolean ?
-    from astropy.stats import sigma_clip
+    
+    if path is None : 
+        mask = detect_hotpix(data)
         
-    maskdata = sigma_clip(np.diff(self.data, axis=0), sigma=17, axis=(1,2))
-    mask = maskdata.mask.astype(bool)
-    # For now this identifies noisy pixels in terms of delta. 
-    # Sigma_clipping along time axis might help in detecting whacky pixels as well ?
-    # See how this goes. 
-    
-    
-    # Detect outliers in data that is not :
-    # - CR
-    # - DIS
-    # - saturated
-    # Or load from map of carac
-    # Outlier rejection / frame ? 
-    # Check things out and how that works basically.
-    
-    return mask
+    else : 
+        from .io import load_hotpix
+        mask = load_hotpix(path)
+        
+    return mask 
 
 def get_cosmics(data, to_mask=None, threshold_mad=9, threshold_std=5):
     from astropy.stats import sigma_clip 
