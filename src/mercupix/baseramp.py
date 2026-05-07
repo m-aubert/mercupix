@@ -145,7 +145,7 @@ class BaseRamp( ):
     
     @property
     def cube_shape(self):
-        return (self.ngroups, self.frameshape[0], self.frameshape[1])
+        return (self.ngroups, self.frame_shape[0], self.frame_shape[1])
         
     # ------- #
     #   I/O   #

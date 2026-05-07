@@ -245,7 +245,7 @@ class LSQFit(Fitter):
     def _fit_polynome_on_data(polynome, data):
         """ """
         coefs = np.linalg.lstsq(polynome.T, 
-                                data.reshape(data.shape[0], -1).astype(np.float32), 
+                                data.reshape(data.shape[0], -1), 
                                 rcond=None)[0]
         # reshaped back as data.
         return coefs.reshape(coefs.shape[0], *data.shape[1:])
@@ -375,7 +375,7 @@ class Brandt2024(Fitter):
                 
         self.alpha, self.beta = self.get_covar(countrateguess)
                 
-    def fit(self, return_qf=True, ktc_prior=None, intercept=False): 
+    def fit(self, return_qf=True, ktc_prior=None, intercept=False, inplace=True): 
         """Fit method.
 
         Returns:
@@ -387,7 +387,8 @@ class Brandt2024(Fitter):
         
         coefs = [coi.reshape(self.diffgp.shape[1:]) for coi in coefs]
         
-        self.coefs = coefs
+        if inplace :
+            self.coefs = coefs
         
         if hasattr(qf, 'shape'):
             qf = qf.reshape(self.diffgp.shape[1:])
@@ -411,9 +412,6 @@ class Brandt2024(Fitter):
             model = model[:, xpixel, ypixel]
             
         return model
-        
-    def get_residuals(self, data=None, pixels=None, coefs=None, model=None):        
-        return super().get_residuals(pixels, coefs, model)
         
     def get_covar(self, a) : 
         """Define group difference covariance matrix.
