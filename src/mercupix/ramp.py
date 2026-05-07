@@ -298,11 +298,11 @@ class RawRamp(BaseRamp):
                                 
         if corr_offset :             
             data= self.subtract_offset(data=data,
-                                            metadata=metadata,
-                                            offset=offset)
+                                        metadata=metadata,
+                                        offset=offset) #Basically bias here.
         if corr_ipc : 
             data= self.correct_ipc(data=data, 
-                                        nl=corr_ipcnl, # C-NL (adu not flux)
+                                        nl=corr_ipcnl, 
                                         metadata=metadata,
                                         ipckernel=ipckernel)    
         
@@ -321,7 +321,7 @@ class RawRamp(BaseRamp):
         varcube = self.get_variance(data=data) # Unclear when and what
         
         if mask: 
-            mask = self.get_mask(**mask_kwargs)
+            mask = self.get_mask(data=data,**mask_kwargs)
         else : 
             mask = np.zeros(data.shape, dtype=np.int8) 
 
