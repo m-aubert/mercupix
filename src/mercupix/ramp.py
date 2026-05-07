@@ -131,7 +131,8 @@ class RawRamp(BaseRamp):
         if saturated: 
             from .mask import get_saturated
             # raw uint16 input, expands mask dims here.
-            mask += get_saturated(self.data,
+            # Explicit sum cause inplace add does not broadcast.
+            mask = mask + get_saturated(self.data,
                                   sat_threshold=sat_threshold)[:, self.actslice, self.actslice] 
         
         if cosmics : 
