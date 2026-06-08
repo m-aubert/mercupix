@@ -182,17 +182,17 @@ def from_roman(filename):
         nchannels = header['NOUTPUTS']
         times  = np.linspace(header['TGROUP'], header['XPOSURE'], num=header['NGROUPS'])
             
-    return  data , tframe, tgroup, nchannels, times
+    return  data , tframe, tgroup, nchannels, times.astype("float32")
     
 def from_pyxim(filename):
     with fits.open(filename) as hdul : 
         data = hdul[0].data
-        times = hdul[1].data['readout_times']
+        times = hdul[1].data['readout_times'].astype("float32")
         nchannels = hdul[0].header['NCHAN']
             
     tframe = np.diff(times).mean()
     tgroup = np.diff(times).mean()
-    return data, tframe, tgroup, nchannels, times
+    return data, tframe, tgroup, nchannels, times.astype("float32")
 
 def from_ip2i(filename, frame_path='/run/seq_1/asic_1/ramp_1', time_arr_path=None):
     f = h5py.File(filename, 'r')
@@ -202,7 +202,7 @@ def from_ip2i(filename, frame_path='/run/seq_1/asic_1/ramp_1', time_arr_path=Non
 
     npix_channel = 64
     data = f[frame_path][()][:,:,npix_channel:] 
-    tarr = f[time_arr_path]['time'] 
+    tarr = f[time_arr_path]['time'].astype("float32") 
 
     tframe = np.diff(tarr).mean()
     times = np.arange(1, data.shape[0])*tframe

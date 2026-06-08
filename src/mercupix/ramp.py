@@ -132,13 +132,14 @@ class RawRamp(BaseRamp):
             from .mask import get_saturated
             # raw uint16 input, expands mask dims here.
             # Explicit sum cause inplace add does not broadcast.
-            mask = mask + get_saturated(self.data,
+            sat_mask = get_saturated(self.data,
                                   sat_threshold=sat_threshold)[:, self.actslice, self.actslice] 
         
+            mask = mask + sat_mask
         if cosmics : 
             from .mask import get_cosmics
             mask += get_cosmics(data=data, 
-                                to_mask=mask,
+                                to_mask=mask.astype(bool), #Use only non-saturated pixels here.
                                 cr_threshold_mad=cr_threshold_mad,
                                 cr_threshold_std=cr_threshold_std)
                         

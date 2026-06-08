@@ -340,9 +340,7 @@ class Brandt2024(Fitter):
                 
         self.diffti = np.diff(times)
         self.diffgp = np.diff(data,axis=0)      
-        
-        self.data = data # Unsure for that, no so memory efficient.
-        
+                
         if len(nframes_list) == 0 : 
             self.Nis = np.ones(data.shape[0])
         else:     
@@ -375,13 +373,13 @@ class Brandt2024(Fitter):
                 
         self.alpha, self.beta = self.get_covar(countrateguess)
                 
-    def fit(self, return_qf=True, ktc_prior=None, intercept=False, inplace=True): 
+    def fit(self, return_qf=True, ktc_prior=None, inplace=True): 
         """Fit method.
 
         Returns:
             tuple of ndarray : slope and variance of the considered ramp.
         """
-        coefs, cov_ab, qf = self.get_coefs(return_qf=return_qf, 
+        coefs, cov_ab, qf = self._get_coefs(return_qf=return_qf, 
                                     ktc_prior=ktc_prior, 
                                     intercept=self.reset)
         
@@ -395,17 +393,17 @@ class Brandt2024(Fitter):
                         
         return coefs, cov_ab, qf
     
-    def get_model(self, pixels=None, coefs=None):
+    def get_model(self, pixels=None, coefs=None, intercept=False, coefid=0):
         # Here linear model
         if coefs is None : 
             coefs = self.coefs
                
-        if len(coefs) > 1 :    
+        if len(coefs) > 1 and intercept :    
             # Simple A*t + b model               
             model = coefs[0]*self.ti[:,None,None] + coefs[1]        
         else:
             # Simple A*t + b                
-            model = coefs[0]*self.ti[:,None,None] + coefs[1]
+            model = coefs[coefid]*self.ti[:,None,None] 
 
         if pixels : 
             xpixel , ypixel = pixels
@@ -450,7 +448,7 @@ class Brandt2024(Fitter):
             
         return alpha_diag, beta_diag
         
-    def get_coefs(self, return_qf = True, intercept=True, ktc_prior=None):
+    def _get_coefs(self, return_qf = True, intercept=True, ktc_prior=None, jumps=False):
         """Estimator for the slope of the ramp.
 
         Args:
@@ -462,77 +460,112 @@ class Brandt2024(Fitter):
                  
         B = np.sum(self.diffd * self.sign[:,None] / self.theta[-1] * (self.phi[1:]*self.Theta+ self.theta[:-1]*self.Phi), axis=0)        
         C = np.sum(self.sign[:,None]/self.theta[-1] * (self.phi[1:]*self.Theta+self.theta[:-1]*self.Phi), axis=0)
-
-        if not intercept : 
-            coefs = [B/C] 
-            cov_ab = [1./C]
         
-        else : 
-            if ktc_prior is not None : 
-                z, zerr = ktc_prior
-                z_term1 = z/zerr**2
-                z_term2 = 1/zerr**2
-                
-            else : 
-                z_term1 = 0
-                z_term2 = 0
-        
-            b = (self.Bp1 / self.ti[1] - self.Cp1*B / (C*self.ti[1]) + z_term1)
-            b /= (self.C11/self.ti[1]**2 - self.Cp1**2/ (C*self.ti[1]) + z_term2) 
-            
-            a = B/C - b*( self.Cp1*B / (C*self.ti[1]))
-                    
-            coefs = [a, b]
-            array_ = np.ma.array if self.ismasked else np.array
-            cov_ab = array_([[C , self.Cp1 / self.ti[1]], [self.Cp1 / self.ti[1], self.C11/self.ti[1]**2 + z_term2]])
-
-        if return_qf:       
+        A = 0.
+        chi2=0.
+        if return_qf : 
             A = 2*np.sum(self.diffd * self.sign[:,None]/self.theta[-1] * self.phi[1:] * self.ThetaD[:-1], axis=0)
             A += np.sum((self.diffd)**2 * self.theta[:-1] * self.phi[1:] / self.theta[-1], axis=0)
-                
-            if not intercept : 
+            
+        if not intercept: 
+            coefs = [B/C] 
+            cov_ab = [1./C]
+            if return_qf :
                 chi2 = A - B**2/C
-
-            else : 
-                chi2 = A + a**2*C + b**2/self.ti[1]**2 * self.C11 - 2*b/self.ti[1] * self.Bp1 
-                chi2 += -2*a*B + 2*a*b/self.ti[1]*self.Cp1 
-                if z_term2 != 0:
-                    chi2 += (b-z)**2 / zerr
-        else:  
-            chi2 = 0
-                                                                                                  
+                    
+        else : 
+            coefs, cov_ab, chi2 = self._get_slope_intercept(A, B,C, 
+                                                            ktc_prior=ktc_prior, 
+                                                            return_qf=return_qf)
+                                                                                                      
         return coefs, cov_ab, chi2      
+    
+    def _get_slope_jumps(self, A, B,C, return_qf=True, jumps=False):
+        
+        if not jumps : 
+            coefs = [B/C] 
+            cov_ab = [1./C]
+            chi2=0
+            if return_qf :
+                chi2 = A - B**2/C
+            
+        else : 
+            pass
+            # two steps : 
+            
+            # one-omit 
+            
+            
+            # two-omit 
+            
+            
+        return coefs, cov_ab, chi2  
+        
+    
+    def _get_slope_intercept(self, A, B,C, ktc_prior=None, return_qf=True): 
+        if ktc_prior is not None :  
+            z, zerr = ktc_prior
+            z_term1 = z/zerr**2
+            z_term2 = 1/zerr**2
+            
+        else : 
+            z_term1 = 0
+            z_term2 = 0
+    
+        b = (self.Bp1 / self.ti[1] - self.Cp1*B / (C*self.ti[1]) + z_term1)
+        b /= (self.C11/self.ti[1]**2 - self.Cp1**2/ (C*self.ti[1]) + z_term2) 
+        
+        a = B/C - b*(self.Cp1*B / (C*self.ti[1]))
+                
+        coefs = [a, b]
+        array_ = np.ma.array if self.ismasked else np.array
+        cov_ab = array_([[C , self.Cp1 / self.ti[1]], [self.Cp1 / self.ti[1], self.C11/self.ti[1]**2 + z_term2]])
+
+        chi2 = 0
+        if return_qf : 
+            chi2 = A + a**2*C + b**2/self.ti[1]**2 * self.C11 - 2*b/self.ti[1] * self.Bp1 
+            chi2 += -2*a*B + 2*a*b/self.ti[1]*self.Cp1 
+            if z_term2 != 0:
+                chi2 += (b-z)**2 / zerr
+            
+        return coefs, cov_ab, chi2     
     
                                 
     @property
-    def C11(self):
-        return self.theta[0]/self.theta[-1] * self.phi[2]
+    def Cd(self):
+        """ Diagonal component of the covariance"""
+        return self.theta[:-1]/self.theta[self.ndiff] * self.phi[1:]
     
     @property
     def Cp1(self):
-        return -1/self.theta[-1] * (self.phi[2]*self.Theta[1] + self.theta[0]*self.Phi[1])
+        #return self.sign/self.theta[self.ndiff] * (self.phi[2]*self.Theta[1] + self.theta[0]*self.Phi[1])
+        return self.sign/self.theta[self.ndiff] * (self.phi[1:]*self.Theta + self.theta[:-1]*self.Phi)
     
     @property
     def Bp1(self):
-        return -1/self.theta[-1] * (self.phi[2]*self.ThetaD[1] + self.theta[0]*self.PhiD[1])
-    
+        #return -1/self.theta[-1] * (self.phi[2]*self.ThetaD[1] + self.theta[0]*self.PhiD[1])
+        return self.sign/self.theta[self.ndiff] * (self.phi[1:]*self.ThetaD[1:] + self.theta[:-1]*self.PhiD)
+
+    @property
+    def Cod(self):
+        """ Off-diagonal component """
+        return -self.beta * self.theta[:-2] * self.phi[2:] / self.theta[self.ndiff]
+
     @property
     def PhiD(self):
         if not hasattr(self, '_PhiD'):
-            PhiD = np.ones_like((self.ndiff, *self.npix))
-            PhiD[-1] = 0
-            PhiD[:-1] *= self.beta[:,None] 
+            PhiD = np.zeros((self.ndiff, *self.npix))     
             for i in range(self.ndiff - 2, -1, -1):
-                PhiD[i] *= (PhiD[i+1] + self.sign[i+1] * self.diffd[i+1] * self.phi[i+2])
+                PhiD[i] = (PhiD[i+1] + self.sign[i+1] * self.diffd[i+1] * self.phi[i+2]) * self.beta[i] 
             self._PhiD = PhiD
         return self._PhiD
 
     @property
     def theta(self):
         if not hasattr(self, '_theta'): 
-            theta = np.ones((self.ndiff+1, *self.npix))
+            theta = np.ones((self.ndiff+1, *self.npix))    
                  
-            theta[1] = self.alpha[1]
+            theta[1] = self.alpha[0]
             for i in range(2,self.ndiff+1):
                 theta[i] = self.alpha[i-1] * theta[i-1] - self.beta[i-2]**2 * theta[i-2]
                 
@@ -543,8 +576,8 @@ class Brandt2024(Fitter):
     @property
     def phi(self):
         if not hasattr(self, '_phi'):
-            phi = np.ones((self.ndiff+1, *self.npix))
-            phi[-2] = self.alpha[-1]
+            phi = np.ones((self.ndiff+1, *self.npix))     
+            phi[self.ndiff-1] = self.alpha[self.ndiff-1] 
             for i in range(self.ndiff-2, -1, -1):
                 phi[i] = self.alpha[i] * phi[i+1] - self.beta[i]**2 * phi[i+2]
          
@@ -555,7 +588,7 @@ class Brandt2024(Fitter):
     @property
     def Phi(self):
         if not hasattr(self, '_Phi'):
-            Phi = np.zeros_like((self.ndiff, *self.npix))
+            Phi = np.zeros((self.ndiff, *self.npix))     
             for i in range(self.ndiff-2, -1, -1):
                 Phi[i] = self.beta[i]*Phi[i+1] + self.sign[i+1]*self.beta[i]*self.phi[i+2]
                 
@@ -566,7 +599,7 @@ class Brandt2024(Fitter):
     @property
     def Theta(self):
         if not hasattr(self, '_Theta'):
-            Theta = np.zeros_like((self.ndiff, *self.npix))            
+            Theta = np.zeros((self.ndiff, *self.npix))            
             Theta[0] = -self.theta[0]
             
             for i in range(1,self.ndiff):
@@ -579,7 +612,7 @@ class Brandt2024(Fitter):
     @property
     def ThetaD(self):
         if not hasattr(self, '_ThetaD'): 
-            ThetaD = np.zeros((self.ndiff+1, *self.npix)).astype("float32")
+            ThetaD = np.zeros((self.ndiff+1, *self.npix))
                              
             ThetaD[1] = -self.diffd[0] * self.theta[0]
             for i in range(1,self.ndiff):

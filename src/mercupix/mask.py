@@ -1,7 +1,7 @@
 import numpy as np 
 import warnings
-from astropy.stats import mad_std
-
+from scipy.stats import median_abs_deviation
+from astropy.nddata.bitmask import bitfield_to_boolean_mask
 
 _MASK_DTYPE = 'uint8' 
 _BITFLAGS_DICT = dict(DIS=1,
@@ -9,6 +9,10 @@ _BITFLAGS_DICT = dict(DIS=1,
                       SATURATED= 4,
                       HOT=8,
                       WARM=16)    
+
+def get_boolmask(mask, bitflags=_BITFLAGS_DICT, **kwargs):
+    boolmask = bitfield_to_boolean_mask(mask, flag_name_map=bitflags, **kwargs)
+    return boolmask
 
 def get_saturated(data=None, sat_threshold=1):
     """Identify saturated pixel in data.
@@ -18,8 +22,12 @@ def get_saturated(data=None, sat_threshold=1):
     data : ndarray, optional
         Raw datacube (in uint16)
         
+    sat_threshold : float, optional
+        Saturation threshold if one wants to flag saturation lower than digital saturation.
+        Defaults to 1. 
+        
     Returns:
-        ndarray : Boolean (N, Npix, Npix) array where True means saturated pixels.
+        ndarray : Boolean (N, Npix, Npix) array where bit 4 means saturated pixels.
 
     """
     saturated_pixels = np.zeros(data.shape, dtype=_MASK_DTYPE) 
@@ -100,17 +108,46 @@ def get_cosmics(data, to_mask=None, cr_threshold_mad=9, cr_threshold_std=5):
     mask[np.concatenate([mask_frame0.mask[None,:] , zscore], axis=0)] = _BITFLAGS_DICT['CR']    
     
     return mask 
-        
-def get_zscores(data, threshold_mad=9, threshold_std=5) :
-    np_= np.ma if isinstance(data, np.ma.MaskedArray) else np 
-        
+
+def get_zscores(data, threshold_mad=9, threshold_std=5):
+    z_mad = (data - np.nanmedian(data, axis=0, keepdims=True))
+    z_std = z_mad/np.nanstd(data,axis=0, ddof=1, keepdims=True)
     
-    z_mad = (data - np_.median(data, axis=0, keepdims=True) )/mad_std(data, axis=0)
-    z_std = (data - np_.median(data, axis=0, keepdims=True) )/data.std(axis=0, ddof=1, keepdims=True)
+    z_mad /=median_abs_deviation(data, scale='normal', nan_policy='omit', axis=0)
     
     mask = (z_mad >= threshold_mad) & (z_std >= threshold_std)
     return mask
-            
+
+def get_cosmics(data, to_mask=None, cr_threshold_mad=9, cr_threshold_std=5):
+    from astropy.stats import sigma_clip 
+
+    mask = np.zeros(data.shape, dtype=_MASK_DTYPE)
+
+    if to_mask is None : 
+        zscore = get_zscores(np.diff(data, axis=0), 
+                             threshold_mad=cr_threshold_mad, 
+                             threshold_std=cr_threshold_std)
+   
+    else : 
+        data = np.ma.masked_where(to_mask, data) #Create masked array for easy diff
+
+        # Then convert to NaN because faster than using the masked array itself (x2).
+        zscore = get_zscores(np.ma.diff(data, axis=0).filled(fill_value=np.nan), 
+                             threshold_mad=cr_threshold_mad, 
+                             threshold_std=cr_threshold_std)
+
+        zscore = zscore & ~to_mask[1:]
+        
+    # Special treatment for first frame.
+    mask_frame0 = sigma_clip(data[0], 
+                             cenfunc='median', 
+                             stdfunc='mad_std', 
+                             sigma_lower=100000, 
+                             sigma_upper=cr_threshold_mad)
+    
+    mask[np.concatenate([ mask_frame0.mask[None,:] , zscore], axis=0)] = _BITFLAGS_DICT['CR']    
+    return mask 
+        
 def detect_hotpix(dark_slope, warm_threshold=0.15, hot_threshold=0.5):
     """
     Raw hot pixel detection from dark slope.
@@ -140,14 +177,14 @@ def detect_hotpix(dark_slope, warm_threshold=0.15, hot_threshold=0.5):
     # Wacky pixels and linearity requirements
     # Stacked darks data.
     # What else ?
-    
     return mask 
 
 def detect_rc(data):
     """
     Detect RC pixels in Dark
     
-    Thresholds from Roman. Also need linearity tests.
+    Thresholds from Roman. 
+    Also need linearity tests.
 
     Parameters
     ----------
@@ -161,7 +198,7 @@ def detect_rc(data):
     Returns
     -------
     ndarray
-        Bitmask of hot & warm pixel
+        Bitmask of RC pixels.
     """
     pass
 
