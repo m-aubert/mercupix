@@ -237,9 +237,9 @@ class Brandt2024:
 
         if countrateguess is None : 
             if self.add_reset: 
-                countrateguess = self.diffd[1:].sum(axis=0)
+                countrateguess = self.diffd[1:].mean(axis=0)
             else : 
-                countrateguess = self.diffd.sum(axis=0)
+                countrateguess = self.diffd.mean(axis=0)
                 
         self.alpha, self.beta = self.get_covar(countrateguess)
                 

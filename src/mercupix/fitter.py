@@ -1,6 +1,86 @@
 import numpy as np
 import warnings
 
+
+def fit_ramp(rawramp,  method='LSQ', 
+                       persistence=False, 
+                       bfe=False,
+                       crnl=False,
+                       raw_ramp_kwargs={},
+                       fit_args={},
+                       **kwargs): 
+    """
+    High-level function to fit ramp
+
+    Parameters
+    ----------
+    datacube : ndarray
+        (N, nact, nact) datacube
+    varcube : ndarray, optional
+        Variance cube of datacube (same shape), by default None
+    time_frames : ndarray-like, optional
+        time per frames, by default None
+    time_group : ndarray-like, optional
+        time per groups if datacube is grouped, by default None
+    method : str, optional
+        Fitting method. Implemented are 'LSQ', 'Kubik', 'Brandt', by default 'LSQ'
+    fit_args : dict, optional
+        keyword-arguments of the fitter method, by default {}
+    persistence : bool, optional
+        Accounts for persistence effects in fit, by default False
+    bfe : bool, optional
+        Accounts for bright-fatter effect in fit, by default False
+    crnl : bool, optional
+        Accounts for count-rate non-linearity, by default False
+    cosmics : bool, optional 
+
+    Returns
+    -------
+    array-like or tuple of ndarray-like
+        Output of the fitting procedure : fitted slope, variance and QF (chi2 or else).
+    """    
+    if time_group is None and time_frames is not None :
+        time_group = time_frames
+        
+    if method == 'LSQ': 
+        if persistence or bfe or crnl : 
+            warnings.warn(f'Persistence, BFE and CRNL are not implemented in {method}')
+        
+        # Add warning persistence / bfe, crnl.
+        fitter = LSQFit.from_rawramp(rawramp, ramp_kwargs=raw_ramp_kwargs, **kwargs)
+    elif method == 'Kubik': 
+        if persistence or bfe or crnl : 
+            warnings.warn(f'Persistence, BFE and CRNL are not implemented in {method}')
+        
+        fitter = Kubik2015.from_rawramp(rawramp=rawramp, 
+                                        ramp_kwargs=raw_ramp_kwargs, 
+                                        **kwargs)
+    elif method == 'Brandt': 
+        if persistence or bfe or crnl : 
+            warnings.warn(f'Persistence, BFE and CRNL are not implemented in {method}')
+        
+        fitter = Brandt2024.from_rawramp(rawramp=rawramp, 
+                                        ramp_kwargs=raw_ramp_kwargs, 
+                                        **kwargs)
+    elif method == 'IP2I':
+        if persistence or bfe or crnl : 
+            warnings.warn(f'Persistence, BFE and CRNL are not implemented YET in {method}')
+            
+        fitter = IP2IBestFit.from_rawramp(rawramp=rawramp, 
+                                        ramp_kwargs=raw_ramp_kwargs, 
+                                        **kwargs)
+        
+    fitted_slope = Fitter.fit(**fit_args)
+
+    return fitted_slope 
+
+
+
+
+#
+
+#
+
 class Fitter(): 
     """ 
     Baseline Fitter Class for models.
@@ -322,14 +402,13 @@ class LSQFit(Fitter):
     def polynome_coefs(self):
         """ """
         return self._polynome.get("coefs", None)
-
-
+  
 class Brandt2024(Fitter):    
     """
         Method to fit flux based on Brandt 2024. Assumes data are grouped.
     """
     def __init__(self, data, times=None,  readnoise=11, timeframe=None,
-                 add_reset=False, countrateguess=None, reset=False, nframes_list = []):
+                 add_reset=False, countrateguess=None, reset=False, nframes_list = [], rescale=True):
         super().__init__(data, times=times)
         
         self.readnoise = np.atleast_1d(readnoise)     
@@ -343,13 +422,16 @@ class Brandt2024(Fitter):
                 
         if len(nframes_list) == 0 : 
             self.Nis = np.ones(data.shape[0])
+            self.tauis = times #np.sum( [ (2*ni - 2*i + 1)*tk for i, (ni,tk) in enumerate(zip(self.Nis, timeframe))])     
+            self.tauis *=1/self.Nis**2
+            self.vari = self.readnoise**2/self.Nis   
+            
         else:     
             self.Nis = nframes_list
-    
-        self.tauis = np.sum( [ (2*ni - 2*i + 1)*tk for i, (ni,tk) in enumerate(zip(self.Nis, timeframe))])     
-        self.tauis *=1/self.Nis**2
-        self.vari = self.readnoise**2/self.Nis   
-        
+            self.tauis = np.sum( [ (2*ni - 2*i + 1)*tk for i, (ni,tk) in enumerate(zip(self.Nis, timeframe))])     
+            self.tauis *=1/self.Nis**2
+            self.vari = self.readnoise**2/self.Nis   
+            
         self.reset = reset
         self.add_reset = add_reset if self.reset else False
         
@@ -372,6 +454,15 @@ class Brandt2024(Fitter):
                 countrateguess = self.diffd.mean(axis=0)
                 
         self.alpha, self.beta = self.get_covar(countrateguess)
+
+        if rescale : 
+            self.scale = self.alpha[0] 
+
+            self.alpha = self.alpha/self.scale
+            self.beta = self.beta/self.scale
+
+        else : 
+            self.scale = 1
                 
     def fit(self, return_qf=True, ktc_prior=None, inplace=True): 
         """Fit method.
@@ -425,7 +516,7 @@ class Brandt2024(Fitter):
         if lalpha_diag.ndim <= ndim : 
             lalpha_diag = np.expand_dims(lalpha_diag, list(range(1,ndim+1)))
             ralpha_diag = np.expand_dims(ralpha_diag, list(range(1,ndim+1)))
-            
+        
         alpha_diag = lalpha_diag + a*ralpha_diag
         
         lbeta_diag = (-self.vari[1:-1])/(self.diffti[1:]*self.diffti[:-1])
@@ -461,17 +552,18 @@ class Brandt2024(Fitter):
         B = np.sum(self.diffd * self.sign[:,None] / self.theta[-1] * (self.phi[1:]*self.Theta+ self.theta[:-1]*self.Phi), axis=0)        
         C = np.sum(self.sign[:,None]/self.theta[-1] * (self.phi[1:]*self.Theta+self.theta[:-1]*self.Phi), axis=0)
         
-        A = 0.
-        chi2=0.
         if return_qf : 
             A = 2*np.sum(self.diffd * self.sign[:,None]/self.theta[-1] * self.phi[1:] * self.ThetaD[:-1], axis=0)
             A += np.sum((self.diffd)**2 * self.theta[:-1] * self.phi[1:] / self.theta[-1], axis=0)
-            
+        
+        else : 
+            A = 0 
+        
         if not intercept: 
-            coefs = [B/C] 
-            cov_ab = [1./C]
+            coefs = [(B/C).astype('float32')] 
+            cov_ab = [(self.scale/C).astype('float32')]
             if return_qf :
-                chi2 = A - B**2/C
+                chi2 = ((A - B**2/C)/self.scale).astype('float32')
                     
         else : 
             coefs, cov_ab, chi2 = self._get_slope_intercept(A, B,C, 
@@ -667,7 +759,7 @@ class Kubik2015(Fitter):
             Variance : Variance of the slope of the ramp in units of ADU.
         """
         alpha_ = self.alpha
-        beta_ = self.beta(fe, sigma_r)
+        beta_ =  2*sigma_r**2 / (1+self.alpha)
         g_ = self.estim_f(fe, sigma_r)
         term  = 2*(g_+beta_)**2 /  ((self.ng-1)*
                                     (1+2*fe/(1+alpha_) * 
@@ -986,3 +1078,8 @@ class LSQFit_dep():
     def polynome_coefs(self):
         """ """
         return self._polynome.get("coefs", None)
+    
+    
+    
+class IP2IBestFit(Fitter):
+    pass

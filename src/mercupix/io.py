@@ -205,11 +205,11 @@ def from_ip2i(filename, frame_path='/run/seq_1/asic_1/ramp_1', time_arr_path=Non
     tarr = f[time_arr_path]['time'].astype("float32") 
 
     tframe = np.diff(tarr).mean()
-    times = np.arange(1, data.shape[0])*tframe
+    times = np.arange(1, data.shape[0]+1)*tframe
     nchannels=32
     tgroup = None 
 
-    return data, tframe, tgroup, nchannels, times
+    return data, tframe, tgroup, nchannels, times.astype("float32")
 
 def from_anyfits(filename): 
     with fits.open(filename) as hdul : 

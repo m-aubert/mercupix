@@ -270,3 +270,306 @@ class Kubik2015 :
                                      (g_+beta_)))
         
         return term
+
+
+
+
+class Brandt2024(Fitter):    
+    """
+        Method to fit flux based on Brandt 2024. Assumes data are grouped.
+    """
+    def __init__(self, data, times=None,  readnoise=11, timeframe=None,
+                 add_reset=False, countrateguess=None, reset=False, nframes_list = []):
+        super().__init__(data, times=times)
+        
+        self.readnoise = np.atleast_1d(readnoise)     
+        self.ti = times
+                
+        # Add support for masked array   
+        self.ismasked = True if isinstance(data, np.ma.MaskedArray) else False         
+                
+        self.diffti = np.diff(times)
+        self.diffgp = np.diff(data,axis=0)      
+                
+        if len(nframes_list) == 0 : 
+            self.Nis = np.ones(data.shape[0])
+        else:     
+            self.Nis = nframes_list
+    
+        self.tauis = np.sum( [ (2*ni - 2*i + 1)*tk for i, (ni,tk) in enumerate(zip(self.Nis, timeframe))])     
+        self.tauis *=1/self.Nis**2
+        self.vari = self.readnoise**2/self.Nis   
+        
+        self.reset = reset
+        self.add_reset = add_reset if self.reset else False
+        
+        if self.add_reset : 
+            append = np.ma.append if isinstance(data, np.ma.MaskedArray) else np.append        
+
+            self.diffgp = append(([data[0]/self.ti[0]]), self.diffgp, axis=0)
+            self.diffti = append(np.array([self.ti[0]]) , self.diffti, axis=0)
+
+        self.diffd = (self.diffgp/self.diffti[:,None,None]).reshape(self.diffgp.shape[0], -1)
+        
+        self.ndiff = self.diffgp.shape[0]
+        self.npix = self.diffd.shape[1:]
+        self.sign = np.asarray((-1)**np.arange(1,self.ndiff+1))
+
+        if countrateguess is None : 
+            if self.add_reset: 
+                countrateguess = self.diffd[1:].mean(axis=0)
+            else : 
+                countrateguess = self.diffd.mean(axis=0)
+                
+        self.alpha, self.beta = self.get_covar(countrateguess)
+                
+    def fit(self, return_qf=True, ktc_prior=None, inplace=True): 
+        """Fit method.
+
+        Returns:
+            tuple of ndarray : slope and variance of the considered ramp.
+        """
+        coefs, cov_ab, qf = self._get_coefs(return_qf=return_qf, 
+                                    ktc_prior=ktc_prior, 
+                                    intercept=self.reset)
+        
+        coefs = [coi.reshape(self.diffgp.shape[1:]) for coi in coefs]
+        
+        if inplace :
+            self.coefs = coefs
+        
+        if hasattr(qf, 'shape'):
+            qf = qf.reshape(self.diffgp.shape[1:])
+                        
+        return coefs, cov_ab, qf
+    
+    def get_model(self, pixels=None, coefs=None, intercept=False, coefid=0):
+        # Here linear model
+        if coefs is None : 
+            coefs = self.coefs
+               
+        if len(coefs) > 1 and intercept :    
+            # Simple A*t + b model               
+            model = coefs[0]*self.ti[:,None,None] + coefs[1]        
+        else:
+            # Simple A*t + b                
+            model = coefs[coefid]*self.ti[:,None,None] 
+
+        if pixels : 
+            xpixel , ypixel = pixels
+            model = model[:, xpixel, ypixel]
+            
+        return model
+        
+    def get_covar(self, a) : 
+        """Define group difference covariance matrix.
+
+        Returns:
+            tuple of ndarray : the diagonal and off-diagonal components of the covariance.
+        """
+        ndim = a.ndim if hasattr(a , 'ndim') else 1
+
+        lalpha_diag = (self.vari[1:]+self.vari[:-1])/self.diffti**2  
+        ralpha_diag = 1/(self.diffti**2) * (self.tauis[1:]+self.tauis[:-1] - 2*self.ti[:-1])
+
+        if lalpha_diag.ndim <= ndim : 
+            lalpha_diag = np.expand_dims(lalpha_diag, list(range(1,ndim+1)))
+            ralpha_diag = np.expand_dims(ralpha_diag, list(range(1,ndim+1)))
+            
+        alpha_diag = lalpha_diag + a*ralpha_diag
+        
+        lbeta_diag = (-self.vari[1:-1])/(self.diffti[1:]*self.diffti[:-1])
+        rbeta_diag = 1/(self.diffti[1:]*self.diffti[:-1]) * ( self.ti[1:-1] -self.tauis[1:-1])
+
+        if lbeta_diag.ndim <= ndim : 
+            lbeta_diag = np.expand_dims(lbeta_diag, list(range(1,ndim+1)))
+            rbeta_diag = np.expand_dims(rbeta_diag, list(range(1,ndim+1)))
+            
+        beta_diag = lbeta_diag + a*rbeta_diag
+            
+        if self.reset : 
+            append = np.ma.append if self.ismasked else np.append
+
+            a0 = np.expand_dims((self.vari[0] + a*self.tauis[0])/ self.ti[0]**2, list(range(1,ndim+1)))
+            b0 = np.expand_dims((self.vari[0] + a*(self.ti[0] - self.tauis[0]))/(self.ti[0]*self.diffti[0]),list(range(1,ndim+1)))
+            
+            alpha_diag = append(a0, alpha_diag, axis=0)
+            beta_diag = append(b0, beta_diag, axis=0)
+            
+        return alpha_diag, beta_diag
+        
+    def _get_coefs(self, return_qf = True, intercept=True, ktc_prior=None, jumps=False):
+        """Estimator for the slope of the ramp.
+
+        Args:
+            return_qf (bool, optional): Whether to return a quality of the fit estimator. Defaults to True.
+
+        Returns:
+            tuple of ndarray : slope, slope variance, if return_qf is True, chi2.
+        """
+                 
+        B = np.sum(self.diffd * self.sign[:,None] / self.theta[-1] * (self.phi[1:]*self.Theta+ self.theta[:-1]*self.Phi), axis=0)        
+        C = np.sum(self.sign[:,None]/self.theta[-1] * (self.phi[1:]*self.Theta+self.theta[:-1]*self.Phi), axis=0)
+        
+        A = 0.
+        chi2=0.
+        if return_qf : 
+            A = 2*np.sum(self.diffd * self.sign[:,None]/self.theta[-1] * self.phi[1:] * self.ThetaD[:-1], axis=0)
+            A += np.sum((self.diffd)**2 * self.theta[:-1] * self.phi[1:] / self.theta[-1], axis=0)
+            
+        if not intercept: 
+            coefs = [B/C] 
+            cov_ab = [1./C]
+            if return_qf :
+                chi2 = A - B**2/C
+                    
+        else : 
+            coefs, cov_ab, chi2 = self._get_slope_intercept(A, B,C, 
+                                                            ktc_prior=ktc_prior, 
+                                                            return_qf=return_qf)
+                                                                                                      
+        return coefs, cov_ab, chi2      
+    
+    def _get_slope_jumps(self, A, B,C, return_qf=True, jumps=False):
+        
+        if not jumps : 
+            coefs = [B/C] 
+            cov_ab = [1./C]
+            chi2=0
+            if return_qf :
+                chi2 = A - B**2/C
+            
+        else : 
+            pass
+            # two steps : 
+            
+            # one-omit 
+            
+            
+            # two-omit 
+            
+            
+        return coefs, cov_ab, chi2  
+        
+    
+    def _get_slope_intercept(self, A, B,C, ktc_prior=None, return_qf=True): 
+        if ktc_prior is not None :  
+            z, zerr = ktc_prior
+            z_term1 = z/zerr**2
+            z_term2 = 1/zerr**2
+            
+        else : 
+            z_term1 = 0
+            z_term2 = 0
+    
+        b = (self.Bp1 / self.ti[1] - self.Cp1*B / (C*self.ti[1]) + z_term1)
+        b /= (self.C11/self.ti[1]**2 - self.Cp1**2/ (C*self.ti[1]) + z_term2) 
+        
+        a = B/C - b*(self.Cp1*B / (C*self.ti[1]))
+                
+        coefs = [a, b]
+        array_ = np.ma.array if self.ismasked else np.array
+        cov_ab = array_([[C , self.Cp1 / self.ti[1]], [self.Cp1 / self.ti[1], self.C11/self.ti[1]**2 + z_term2]])
+
+        chi2 = 0
+        if return_qf : 
+            chi2 = A + a**2*C + b**2/self.ti[1]**2 * self.C11 - 2*b/self.ti[1] * self.Bp1 
+            chi2 += -2*a*B + 2*a*b/self.ti[1]*self.Cp1 
+            if z_term2 != 0:
+                chi2 += (b-z)**2 / zerr
+            
+        return coefs, cov_ab, chi2     
+    
+                                
+    @property
+    def Cd(self):
+        """ Diagonal component of the covariance"""
+        return self.theta[:-1]/self.theta[self.ndiff] * self.phi[1:]
+    
+    @property
+    def Cp1(self):
+        #return self.sign/self.theta[self.ndiff] * (self.phi[2]*self.Theta[1] + self.theta[0]*self.Phi[1])
+        return self.sign/self.theta[self.ndiff] * (self.phi[1:]*self.Theta + self.theta[:-1]*self.Phi)
+    
+    @property
+    def Bp1(self):
+        #return -1/self.theta[-1] * (self.phi[2]*self.ThetaD[1] + self.theta[0]*self.PhiD[1])
+        return self.sign/self.theta[self.ndiff] * (self.phi[1:]*self.ThetaD[1:] + self.theta[:-1]*self.PhiD)
+
+    @property
+    def Cod(self):
+        """ Off-diagonal component """
+        return -self.beta * self.theta[:-2] * self.phi[2:] / self.theta[self.ndiff]
+
+    @property
+    def PhiD(self):
+        if not hasattr(self, '_PhiD'):
+            PhiD = np.zeros((self.ndiff, *self.npix))     
+            for i in range(self.ndiff - 2, -1, -1):
+                PhiD[i] = (PhiD[i+1] + self.sign[i+1] * self.diffd[i+1] * self.phi[i+2]) * self.beta[i] 
+            self._PhiD = PhiD
+        return self._PhiD
+
+    @property
+    def theta(self):
+        if not hasattr(self, '_theta'): 
+            theta = np.ones((self.ndiff+1, *self.npix))    
+                 
+            theta[1] = self.alpha[0]
+            for i in range(2,self.ndiff+1):
+                theta[i] = self.alpha[i-1] * theta[i-1] - self.beta[i-2]**2 * theta[i-2]
+                
+            self._theta = theta
+        
+        return self._theta
+    
+    @property
+    def phi(self):
+        if not hasattr(self, '_phi'):
+            phi = np.ones((self.ndiff+1, *self.npix))     
+            phi[self.ndiff-1] = self.alpha[self.ndiff-1] 
+            for i in range(self.ndiff-2, -1, -1):
+                phi[i] = self.alpha[i] * phi[i+1] - self.beta[i]**2 * phi[i+2]
+         
+            self._phi = phi
+        
+        return self._phi    
+    
+    @property
+    def Phi(self):
+        if not hasattr(self, '_Phi'):
+            Phi = np.zeros((self.ndiff, *self.npix))     
+            for i in range(self.ndiff-2, -1, -1):
+                Phi[i] = self.beta[i]*Phi[i+1] + self.sign[i+1]*self.beta[i]*self.phi[i+2]
+                
+            self._Phi = Phi
+            
+        return self._Phi
+    
+    @property
+    def Theta(self):
+        if not hasattr(self, '_Theta'):
+            Theta = np.zeros((self.ndiff, *self.npix))            
+            Theta[0] = -self.theta[0]
+            
+            for i in range(1,self.ndiff):
+                Theta[i] = self.beta[i-1]*Theta[i-1] + self.sign[i]*self.theta[i]
+                
+            self._Theta = Theta
+            
+        return self._Theta
+            
+    @property
+    def ThetaD(self):
+        if not hasattr(self, '_ThetaD'): 
+            ThetaD = np.zeros((self.ndiff+1, *self.npix))
+                             
+            ThetaD[1] = -self.diffd[0] * self.theta[0]
+            for i in range(1,self.ndiff):
+                ThetaD[i+1] = self.beta[i-1]*ThetaD[i] + self.sign[i]*self.diffd[i]*self.theta[i]
+                
+            self._ThetaD = ThetaD
+            
+        return self._ThetaD
+  
+  
