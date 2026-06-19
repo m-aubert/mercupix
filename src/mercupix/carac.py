@@ -4,6 +4,58 @@ import numpy as np
 def get_ptc(data):
     return data.mean(axis=(1,2)) , data.std(axis=(1,2), ddof=1) 
 
+def get_channel_slices(ramp, channel=0, corr_refpix=False): 
+    slice_ = ramp.actslice if corr_refpix else slice(0,ramp.frame_shape[0])
+    offset_up, offset_down = 0,0
+
+    slice_channel = slice(channel*ramp.npix_per_channel+offset_up , 
+                        (channel+1)*ramp.npix_per_channel-offset_down,1)
+
+    if corr_refpix :
+        if channel == 0 : 
+            offset_up, offset_down = ramp.nrefpixels,0
+            slice_channel = slice(0, ramp.npix_per_channel-ramp.nrefpixels) 
+
+        if channel == ramp.nchannels-1:
+            offset_up, offset_down = 0,ramp.nrefpixels
+            slice_channel = slice(channel*ramp.npix_per_channel-offset_down, ramp.active_shape[1]) 
+            
+    return slice_, slice_channel
+
+def to_readout_order(data, channel=0, corr_refpix=True):    
+    slice_, slice_channel = get_channel_slices(ramp, channel=channel, corr_refpix=corr_refpix)
+    
+    if data.ndim == 3 : 
+        return data[:,:, slice_channel] if channel%2 == 0 else data[:, :, slice_channel][:,:,::-1]
+    elif data.ndim == 2 :        
+        return data[:, slice_channel] if channel%2 == 0 else data[:, slice_channel][:,:,::-1]
+
+
+
+def get_readout_sequence(ramp,data=None, channel=0, frame=0, corr_refpix=True, pad=12):
+    if data is None : 
+        data = ramp.preprocess_ramp(corr_refpix=corr_refpix)[frame]
+
+    slice_ = ramp.actslice if corr_refpix else slice(0,ramp.frame_shape[0])
+    offset_up, offset_down = 0,0
+
+    slice_channel = slice(channel*ramp.npix_per_channel+offset_up , 
+                          (channel+1)*ramp.npix_per_channel-offset_down,1)
+
+    if corr_refpix :
+        if channel == 0 : 
+            offset_up, offset_down = ramp.nrefpixels,0
+            slice_channel = slice(0, ramp.npix_per_channel-ramp.nrefpixels) 
+
+        if channel == ramp.nchannels-1:
+            offset_up, offset_down = 0,ramp.nrefpixels
+            slice_channel = slice(channel*ramp.npix_per_channel-offset_down, ramp.active_shape[1]) 
+            
+    test = np.zeros((ramp.frame_shape[0], ramp.npix_per_channel+pad), dtype='float32') 
+    test[slice_, offset_up:ramp.npix_per_channel-offset_down] = data[i, :, slice_channel] if channel%2 == 0 else data[i, :, slice_channel][:,::-1]
+    return test
+    
+
 
 def get_psd(ramp, data=None, channel=0, frame=0, corr_refpix=True, pad=12, readout_freq=203_000): 
     if data is None : 
