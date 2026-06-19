@@ -172,12 +172,10 @@ class RawRamp(BaseRamp):
             from .calib import ipc_kernel 
             
             # Will probably define a kernel model (3x3) or (5x5).
-            k_ipc = ipc_kernel(load_ipc(metadata['ipc'], nl=nl))
+            ipckernel = ipc_kernel(load_ipc(metadata['ipc'], nl=nl))
                     
-        else : 
-            k_ipc = ipckernel # OR DECONVOLVE ?
                 
-        return ski.restoration.richardson_lucy(data, k_ipc, num_iter=1)
+        return ski.restoration.richardson_lucy(data, ipckernel, num_iter=5, clip=False)
         
             
     def correct_nl(self, data=None, 
@@ -242,13 +240,10 @@ class RawRamp(BaseRamp):
                         corr_offset=False,
                         corr_dark=False, 
                         corr_nl=False, 
+                        corr_cosmics=False,
                         mask=False,
                         mask_kwargs={},
                         metadata={},
-                        corr_bfe=False,
-                        corr_crnl=False,
-                        persistence=False,
-                        corr_burnin=False,
                         nl_coefficients=None,
                         ipckernel=np.ones((5,5)),
                         offset=0):
@@ -319,6 +314,10 @@ class RawRamp(BaseRamp):
         if mask: 
             mask = self.get_mask(data=data,**mask_kwargs)
         else : 
+            if corr_cosmics : 
+                from .mask import get_cosmics
+                _, data = get_cosmics(data=data, inpaint=corr_cosmics)
+                
             mask = np.zeros(data.shape, dtype=np.int8) 
 
         return (data, varcube, mask)

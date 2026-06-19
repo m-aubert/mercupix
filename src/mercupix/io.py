@@ -194,7 +194,7 @@ def from_pyxim(filename):
     tgroup = np.diff(times).mean()
     return data, tframe, tgroup, nchannels, times.astype("float32")
 
-def from_ip2i(filename, frame_path='/run/seq_1/asic_1/ramp_1', time_arr_path=None):
+def from_ip2i(filename, frame_path='/run/seq_1/asic_1/ramp_1/frames', time_arr_path=None):
     f = h5py.File(filename, 'r')
 
     if time_arr_path is None : 

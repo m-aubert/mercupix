@@ -553,7 +553,9 @@ class Brandt2024(Fitter):
         C = np.sum(self.sign[:,None]/self.theta[-1] * (self.phi[1:]*self.Theta+self.theta[:-1]*self.Phi), axis=0)
         
         if return_qf : 
-            A = 2*np.sum(self.diffd * self.sign[:,None]/self.theta[-1] * self.phi[1:] * self.ThetaD[:-1], axis=0)
+            # Follows equation 60 and not 61 because beta forgotten.
+            A = 2*np.sum(self.diffd[1:] * self.sign[1:,None]/self.theta[-1] * self.phi[2:] * self.ThetaD[1:-1] * self.beta, axis=0) 
+            A += 2*(self.diffd[0] * self.sign[0]/self.theta[-1] * self.phi[1] * self.ThetaD[0]) # beta0 = 1
             A += np.sum((self.diffd)**2 * self.theta[:-1] * self.phi[1:] / self.theta[-1], axis=0)
         
         else : 
