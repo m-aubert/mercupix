@@ -31,7 +31,6 @@ def to_readout_order(data, channel=0, corr_refpix=True):
         return data[:, slice_channel] if channel%2 == 0 else data[:, slice_channel][:,:,::-1]
 
 
-
 def get_readout_sequence(ramp,data=None, channel=0, frame=0, corr_refpix=True, pad=12):
     if data is None : 
         data = ramp.preprocess_ramp(corr_refpix=corr_refpix)[frame]
@@ -52,11 +51,11 @@ def get_readout_sequence(ramp,data=None, channel=0, frame=0, corr_refpix=True, p
             slice_channel = slice(channel*ramp.npix_per_channel-offset_down, ramp.active_shape[1]) 
             
     test = np.zeros((ramp.frame_shape[0], ramp.npix_per_channel+pad), dtype='float32') 
-    test[slice_, offset_up:ramp.npix_per_channel-offset_down] = data[i, :, slice_channel] if channel%2 == 0 else data[i, :, slice_channel][:,::-1]
+    test[slice_, offset_up:ramp.npix_per_channel-offset_down] = data[:, slice_channel] if channel%2 == 0 else data[:, slice_channel][:,::-1]
+
     return test
+
     
-
-
 def get_psd(ramp, data=None, channel=0, frame=0, corr_refpix=True, pad=12, readout_freq=203_000): 
     if data is None : 
         data = ramp.preprocess_ramp(corr_refpix=corr_refpix)[0]
