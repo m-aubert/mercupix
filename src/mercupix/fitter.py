@@ -1,7 +1,7 @@
 import numpy as np
 import warnings
 
-
+# High level function
 def fit_ramp(rawramp,  method='LSQ', 
                        persistence=False, 
                        bfe=False,
@@ -42,45 +42,26 @@ def fit_ramp(rawramp,  method='LSQ',
     if time_group is None and time_frames is not None :
         time_group = time_frames
         
+    try : 
+        fitter = model_register['method'].from_rawramp(rawramp, 
+                                                       ramp_kwargs=raw_ramp_kwargs,
+                                                       **kwargs)
+        
+    except KeyError as ke :
+        raise KeyError("Fitter {method} does not exist")
+         
+    fitted_slope = fitter.fit(**fit_args)
+    
     if method == 'LSQ': 
-        if persistence or bfe or crnl : 
-            warnings.warn(f'Persistence, BFE and CRNL are not implemented in {method}')
-        
-        # Add warning persistence / bfe, crnl.
-        fitter = LSQFit.from_rawramp(rawramp, ramp_kwargs=raw_ramp_kwargs, **kwargs)
-    elif method == 'Kubik': 
-        if persistence or bfe or crnl : 
-            warnings.warn(f'Persistence, BFE and CRNL are not implemented in {method}')
-        
-        fitter = Kubik2015.from_rawramp(rawramp=rawramp, 
-                                        ramp_kwargs=raw_ramp_kwargs, 
-                                        **kwargs)
-    elif method == 'Brandt': 
-        if persistence or bfe or crnl : 
-            warnings.warn(f'Persistence, BFE and CRNL are not implemented in {method}')
-        
-        fitter = Brandt2024.from_rawramp(rawramp=rawramp, 
-                                        ramp_kwargs=raw_ramp_kwargs, 
-                                        **kwargs)
-    elif method == 'IP2I':
-        if persistence or bfe or crnl : 
-            warnings.warn(f'Persistence, BFE and CRNL are not implemented YET in {method}')
-            
-        fitter = IP2IBestFit.from_rawramp(rawramp=rawramp, 
-                                        ramp_kwargs=raw_ramp_kwargs, 
-                                        **kwargs)
-        
-    fitted_slope = Fitter.fit(**fit_args)
+       _ , fitted_slope, _ =  fitter.parse_coefs()
+    
+    elif method == 'Kubik' or method == 'Brandt' : 
+        fitted_slope = fitted_slope[0][0]
 
     return fitted_slope 
 
 
-
-
-#
-
-#
-
+## General Fitter level
 class Fitter(): 
     """ 
     Baseline Fitter Class for models.
@@ -589,9 +570,7 @@ class Brandt2024(Fitter):
             
             # one-omit 
             
-            
             # two-omit 
-            
             
         return coefs, cov_ab, chi2  
         
@@ -814,7 +793,7 @@ class LSQFit_dep():
     def from_rawramp(cls, rawramp, degree=5, polytype='leg', **kwargs):
         """ """
         datacube, varcube, mask = rawramp.preprocess_ramp(**kwargs)
-        return cls(data=datacube, times=rawramp.times, degree=5, polytype='leg')
+        return cls(data=datacube, times=rawramp.times, degree=degree, polytype=polytype)
         
     # ================ #
     #   method         #
@@ -1085,3 +1064,8 @@ class LSQFit_dep():
     
 class IP2IBestFit(Fitter):
     pass
+
+# Register models
+model_register = {'LSQ' : LSQFit,
+                  'Kubik': Kubik2015,
+                  'Brandt': Brandt2024}

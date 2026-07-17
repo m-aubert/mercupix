@@ -9,7 +9,7 @@ _BITFLAGS_DICT = dict(DIS=1,
                       CR=2,
                       SATURATED= 4,
                       HOT=8,
-                      WARM=16
+                      WARM=16,
                       CM=32)    
 
 def get_boolmask(mask, bitflags=_BITFLAGS_DICT, **kwargs):
@@ -39,7 +39,7 @@ def get_saturated(data=None, sat_threshold=1):
     return saturated_pixels
 
 def get_charge_migration(mask, kernel=None):
-    # Assume that mask will be the directly from saturated and no other data before
+    # Assume that mask will be issued directly from saturated pixels.
     from scipy.ndimage import binary_dilation, generate_binary_structure
     
     if kernel is None : 
@@ -47,7 +47,7 @@ def get_charge_migration(mask, kernel=None):
     new_mask = binary_dilation(mask, kernel)
     new_mask[mask.astype(bool)] = False
     
-    mask[new_mask] += _BITFLAGS_DICT['CM']
+    mask[new_mask.astype(bool)] = _BITFLAGS_DICT['CM']
     return mask
 
 def get_downpix(path=None):
@@ -98,31 +98,6 @@ def get_hotpix(data=None, path=None, **kwargs):
          
     return mask
 
-def get_cosmics(data, to_mask=None, cr_threshold_mad=9, cr_threshold_std=5):
-    from astropy.stats import sigma_clip 
-    
-    mask = np.zeros(data.shape, _MASK_DTYPE)
-    
-    if to_mask is None : 
-        zscore = get_zscores(np.diff(data, axis=0),
-                             threshold_mad=cr_threshold_mad, 
-                             threshold_std=cr_threshold_std)
-    
-    else : 
-        data_ = np.ma.array(np.diff(data, axis=0), mask=to_mask[1:])
-        zscore = get_zscores(data_, 
-                             threshold_mad=cr_threshold_mad, 
-                             threshold_std=cr_threshold_std)
-        zscore = zscore & ~to_mask[1:]
-    
-    # Special treatment for first frame.
-    mask_frame0 = sigma_clip(data[0], cenfunc='median', stdfunc='mad_std', 
-                             sigma_lower=100000, sigma_upper=cr_threshold_mad)
-
-    mask[np.concatenate([mask_frame0.mask[None,:] , zscore], axis=0)] = _BITFLAGS_DICT['CR']    
-    
-    return mask 
-
 def get_zscores(data, threshold_mad=9, threshold_std=5):
     z_mad = (data - np.nanmedian(data, axis=0, keepdims=True))
     z_std = z_mad/np.nanstd(data,axis=0, ddof=1, keepdims=True)
@@ -141,7 +116,7 @@ def get_window(data, stat_func='median', window_length=4, min_count=1, axis=0):
     
     return zscore , rolled_stat
 
-def get_cosmics(data, inpaint=True, cr_threshold=7):
+def get_cosmics(data, inpaint=True, cr_threshold_mad=7):
     """
     
     """
@@ -151,21 +126,21 @@ def get_cosmics(data, inpaint=True, cr_threshold=7):
     
     diff_data = np.diff(data, axis=0)
 
-    zscore, med = get_window(data, stat_func='median', window_length=4, min_count=1, axis=0)
-    cr = zscore >= cr_threshold
+    zscore, med = get_window(diff_data, stat_func='median', window_length=4, min_count=1, axis=0)
+    cr = zscore >= cr_threshold_mad
     
     mask_frame0 = sigma_clip(data[0], 
                              cenfunc='median', 
                              stdfunc='mad_std', 
                              sigma_lower=100000, 
-                             sigma_upper=cr_threshold)
+                             sigma_upper=cr_threshold_mad)
     
     mask[np.concatenate([ mask_frame0.mask[None,:] , cr], axis=0)] = _BITFLAGS_DICT['CR']    
     
     if inpaint : 
         diff_data = diff_data.copy()
         diff_data[cr] = med[cr]
-        data = np.cumsum(np.append(diff_data[0] , diff_data), axis=0)
+        data = np.cumsum(np.append(diff_data[0][None,:,:] , diff_data, axis=0), axis=0)
     
     return mask, data
         

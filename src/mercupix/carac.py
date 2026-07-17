@@ -22,7 +22,7 @@ def get_channel_slices(ramp, channel=0, corr_refpix=False):
             
     return slice_, slice_channel
 
-def to_readout_order(data, channel=0, corr_refpix=True):    
+def to_readout_order(data, ramp, channel=0, corr_refpix=True):    
     slice_, slice_channel = get_channel_slices(ramp, channel=channel, corr_refpix=corr_refpix)
     
     if data.ndim == 3 : 
