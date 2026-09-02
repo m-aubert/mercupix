@@ -4,13 +4,19 @@ import bottleneck as bn
 from scipy.stats import median_abs_deviation
 from astropy.nddata.bitmask import bitfield_to_boolean_mask
 
-_MASK_DTYPE = 'uint8' 
-_BITFLAGS_DICT = dict(DIS=1,
-                      CR=2,
-                      SATURATED= 4,
-                      HOT=8,
-                      WARM=16,
-                      CM=32)    
+_MASK_DTYPE = 'uint32' 
+_BITFLAGS_DICT = dict(GOOD=0,
+                      DIS=2**0, # Disconnected but might change to DEAD.
+                      CR=2**1, # Cosmic rays but might change to JUMP.
+                      SATURATED=2**2,
+                      HOT=2**3,
+                      WARM=2**4,
+                      CM=2**5, #Basically candidate for CM & Snowball.
+                      REF=2**6,
+                      RC=2**7,
+                      NL=2**8,
+                      RTN=2**9)
+
 
 def get_boolmask(mask, bitflags=_BITFLAGS_DICT, **kwargs):
     boolmask = bitfield_to_boolean_mask(mask, flag_name_map=bitflags, **kwargs)
@@ -73,7 +79,7 @@ def get_downpix(path=None):
     return mask
 
 def get_hotpix(data=None, path=None, **kwargs):
-    """ Get identified noisy pixel in data.
+    """ Get high known dark pixels identified in data.
 
     Parameters
     ----------
@@ -106,7 +112,6 @@ def get_zscores(data, threshold_mad=9, threshold_std=5):
     
     mask = (z_mad >= threshold_mad) & (z_std >= threshold_std)
     return mask
-
 
 def get_window(data, stat_func='median', window_length=4, min_count=1, axis=0):
     window = getattr(bn.move, f'move_{stat_func}')
@@ -147,7 +152,6 @@ def get_cosmics(data, inpaint=True, cr_threshold_mad=7):
 def detect_hotpix(dark_slope, warm_threshold=0.15, hot_threshold=0.5):
     """
     Raw hot pixel detection from dark slope.
-    
     Thresholds from Roman. Also need linearity tests.
 
     Parameters
@@ -197,8 +201,6 @@ def detect_rc(data):
     # From stack of ramp data & slope
     # QF based selection.
     # Will see how this goes. 
-
-    
     pass
 
 

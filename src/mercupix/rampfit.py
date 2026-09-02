@@ -300,8 +300,12 @@ class Brandt2024:
             tuple of ndarray : slope, slope variance, if return_qf is True, chi2.
         """
                  
-        B = np.sum(self.diffd * self.sign[:,None] / self.theta[-1] * (self.phi[1:]*self.Theta+ self.theta[:-1]*self.Phi), axis=0)        
-        C = np.sum(self.sign[:,None]/self.theta[-1] * (self.phi[1:]*self.Theta+self.theta[:-1]*self.Phi), axis=0)
+        B = np.sum(self.diffd * self.sign[:,None] / self.theta[-1] * 
+                   (self.phi[1:]*self.Theta+ self.theta[:-1]*self.Phi), 
+                   axis=0)        
+        C = np.sum(self.sign[:,None]/self.theta[-1] * 
+                   (self.phi[1:]*self.Theta+self.theta[:-1]*self.Phi), 
+                   axis=0)
 
         a = B/C
         a_err = 1./C

@@ -50,14 +50,14 @@ def ipc_kernel(values, kernel=5,  nl=False) :
 
 
 class PersistenceModel: 
-    def __init__(self, metadata={}):
+    def __init__(self, model=None, metadata={}):
         self.model = model
         self.metadata = metadata    
             
     def get_persistence_correction_adu(self, t):
         gain = self.get_gain()
         dt = self.get_last_obs_dt()  # x would be last recorded fluence
-        x = self.get_last_fluence()
+        x, exptime = self.get_last_fluence()
         x  = x * g * exptime #Need to think about units.
         # from tabulated data : 
         a_pers, x0, alpha, dx = self.get_tabulated_values()

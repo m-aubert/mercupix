@@ -39,21 +39,18 @@ def fit_ramp(rawramp,  method='LSQ',
     array-like or tuple of ndarray-like
         Output of the fitting procedure : fitted slope, variance and QF (chi2 or else).
     """    
-    if time_group is None and time_frames is not None :
-        time_group = time_frames
-        
     try : 
-        fitter = model_register['method'].from_rawramp(rawramp, 
+        fitter = model_register[method].from_rawramp(rawramp, 
                                                        ramp_kwargs=raw_ramp_kwargs,
                                                        **kwargs)
         
     except KeyError as ke :
-        raise KeyError("Fitter {method} does not exist")
+        raise KeyError(f"Fitter {method} does not exist")
          
     fitted_slope = fitter.fit(**fit_args)
     
     if method == 'LSQ': 
-       _ , fitted_slope, _ =  fitter.parse_coefs()
+       _ , fitted_slope, _ =  fitter.parse_coefs(in_adu=True)
     
     elif method == 'Kubik' or method == 'Brandt' : 
         fitted_slope = fitted_slope[0][0]
@@ -1064,6 +1061,12 @@ class LSQFit_dep():
     
 class IP2IBestFit(Fitter):
     pass
+     #likelihood based method ?
+     # Placeholder for now : 
+     # Ambition : 
+     # Accounts for additional NL.
+     # Accounts for BFE.
+     # Accounts (correct) for persistence.
 
 # Register models
 model_register = {'LSQ' : LSQFit,

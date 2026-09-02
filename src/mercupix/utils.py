@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 def plot_frame(data, fig=None, ax=None, clim=[1,99], **kwargs):
     if fig is None and ax is None : 
         fig, ax = plt.subplots()

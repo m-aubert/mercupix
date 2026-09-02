@@ -55,6 +55,21 @@ class Exposure:
         self.mask = mask
         self.metadata = metadata
         
+    @classmethod
+    def from_filename(cls,filename):
+        from astropy.io import fits 
+        
+        with fits.open(filename) as hdul : 
+            image = hdul[1].data
+            dq = hdul[2].data
+            var = hdul[3].data  
+            
+        #
+        # Add some metadata processing with header or something else.
+        #
+        
+        return cls(data=image, mask=dq, variance=var, metadata={})
+        
     def to_fits(self, data=None, mask=None, variance=None):
         """
         Output function that stores image in a fits file.
@@ -141,3 +156,47 @@ class MetaFrame(Exposure):
         mask = self.mask
         return mask 
     
+
+class MultiRampExposure:
+    def __init__(self, images=[], dq=[], var=[], 
+                 corr_flatfield=False): 
+        
+        # Should we use similar collection of as ztfimg ?
+        # Or something lighter ?
+        
+        pass
+
+    @classmethod
+    def from_filename(cls, list_of_files):
+        from astropy.io import fits
+        
+        list_of_images = []
+        dq = []
+        var = []
+        for file_ in list_of_files:
+            with fits.open(file_) as hdul : 
+               list_of_images.append(hdul[1].data)
+               dq.append(hdul[2].dq)
+               var.append(hdul[3].data)    
+                
+        return cls(images=list_of_images, dq=dq, var=var)
+
+    @classmethod
+    def from_images(list_of_images):
+        return cls(images=list_of_images)
+        
+    def stack_images():
+        pass 
+
+    def combine_var():
+        pass 
+
+    def combine_dq():
+        pass 
+
+
+    def write():
+        pass
+    
+    def make_header():
+        pass 

@@ -1,6 +1,6 @@
 import numpy as np 
 from scipy.stats import median_abs_deviation
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed #Temporary accelaration before we change strategy.
 from .fitter import LSQFit
 from .carac import get_readout_sequence
 from .ramp import RawRamp
@@ -8,21 +8,22 @@ from .ramp import RawRamp
 
 # Utils func to add refs to data -> add to Ramp
 def get_data_with_ref(data, ramp_with_refpix, ramp): 
-    data = np.column_stack([ramp_with_refpix[:,:4,ramp.actslice], data, ramp_with_refpix[:,-4:, ramp.actslice]])
+    data = np.column_stack([ramp_with_refpix[:,:4,ramp.actslice], 
+                            data, ramp_with_refpix[:,-4:, ramp.actslice]])
     data = np.dstack([ramp_with_refpix[:,:,:4], data, ramp_with_refpix[:,:, -4:]])
     return data
 
 
 # Training function -> will become a function of a class. (or a class method ?)
 # BEWARE -- TUNED FOR IP2I FOR NOW.
-def train_sirs(ramp_list, refpix=4,  nroh=12, detector_freq=200_000, njobs=5, debug=False, filenames_kwargs=dict(datatype='ip2i', 
+def train_sirs(ramp_list, refpix=4,  nroh=12, detector_freq=200_000, njobs=5, debug=False, 
+               filenames_kwargs=dict(datatype='ip2i', 
                                      time_arr_path='/run/seq_1/env_measures')):
 
     results = 0
     counters = 0
     offsets = 0
-    if debug : 
-        delta_mu = []
+
     for i, (dark_data, frame_path) in enumerate(ramp_list) : 
         ramp = RawRamp.from_filename(dark_data, frame_path=frame_path,  **filenames_kwargs, )
         
@@ -67,9 +68,9 @@ def train_sirs(ramp_list, refpix=4,  nroh=12, detector_freq=200_000, njobs=5, de
 
             del result
 
-            results += np.asarray(result_).sum(axis=0) #[result[i][0] for i in range(len(result))]) # Unpacking 
-            offsets += np.asarray(counter_).sum(axis=0) ##result[i][1] for i in range(len(result))]) # Unpacking 
-            counters += np.asarray(offset_).sum(axis=0) #[result[i][2] for i in range(len(result))]) # Unpacking 
+            results += np.asarray(result_).sum(axis=0) 
+            offsets += np.asarray(counter_).sum(axis=0) 
+            counters += np.asarray(offset_).sum(axis=0) 
 
             del result_, counter_, offset_ 
             
@@ -85,9 +86,6 @@ def train_sirs(ramp_list, refpix=4,  nroh=12, detector_freq=200_000, njobs=5, de
                     print(f"{i/len(residuals)*100}%")
                     
         del residuals, mask
-        
-    #print(results.shape)
-    #Nspec, Lspec, Rspec, Xspec, Yspec, Zspec = np.swapaxes(results, 0
         
     # "Solving here"
     denom_ = results[:,2]*results[:,1] - np.real(results[:,5]*results[:,5].conjugate())
@@ -115,7 +113,6 @@ def save_sirs(fft_basis_ref, alpha, beta, freqs, n, results,  filepath='sirs.h5'
             f.create_dataset('Zspec', data=results[5])
         
     print("Saved : {filepath}")
-    #return None
 
 def process_frame(ramp, frame, good_, refpix, fft_basis_ref, pixmask, nroh=12):
 

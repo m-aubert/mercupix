@@ -25,13 +25,14 @@ class Metadata:
         
     def parse_filename(filename):
         """
-        parse_filename to obtain proper date.
+        parse_filename to get info for query.
         """
         pass
 
-    def query_metadata(obsdate):
+    def query_metadata(param):
         """
-        From obsdate, unique ID get corresponding data path
+        From param get corresponding metadata
+        Requires : Unified DB system and datamodel for query.
         """
         # Query nearest calib dark
         # Query nearest calib flat     
@@ -189,7 +190,7 @@ def from_pyxim(filename):
         data = hdul[0].data
         times = hdul[1].data['readout_times'].astype("float32")
         nchannels = hdul[0].header['NCHAN']
-            
+                   
     tframe = np.diff(times).mean()
     tgroup = np.diff(times).mean()
     return data, tframe, tgroup, nchannels, times.astype("float32")
@@ -211,6 +212,8 @@ def from_ip2i(filename, frame_path='/run/seq_1/asic_1/ramp_1/frames', time_arr_p
 
     return data, tframe, tgroup, nchannels, times.astype("float32")
 
+
+# Generic functions for other data.
 def from_anyfits(filename): 
     with fits.open(filename) as hdul : 
         data = hdul[0].data
