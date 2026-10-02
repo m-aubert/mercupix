@@ -160,8 +160,10 @@ class RawRamp(BaseRamp):
         ndarray
             A shape (N, Nactpix, Nactpix) bitmask.
         """        
-        # Initialize mask 
-        mask = np.zeros(self.active_shape, dtype='uint8')
+        # Initialize mask
+        from .mask import _MASK_DTYPE
+
+        mask = np.zeros(self.active_shape, dtype=_MASK_DTYPE)
         
         if disconnected : 
             from .mask import get_downpix
@@ -191,11 +193,11 @@ class RawRamp(BaseRamp):
 
         if cosmics : 
             from .mask import get_cosmics
-            maski , data = get_cosmics(data=data, 
+            maskjump , data = get_cosmics(data=data, 
                                 cr_threshold_mad=cr_threshold_mad,
                                 inpaint=inpaint)
             
-            mask = mask + maski #For some dtype, inplace sum does not work. Document for next time.
+            mask = mask + maskjump #For some dtype, inplace sum does not work. Document for next time.
                         
         return mask, data
         

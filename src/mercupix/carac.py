@@ -120,13 +120,20 @@ class ClassicalNL :
         if init_val is None : 
             init_val = [0]*(self.degree+1)
             init_val[1] = self.ramp[0].mean()/2 
+             
+        if self.ramp.ndim == 4:
+            axis = (0,1,2)
+        elif self.ramp.ndim == 3 :
+            axis=(1,2)
+        else :
+            axis = -1
 
-        if on_mean : 
-            data_vec = self.ramp.mean(axis=(1,2))
-            err = self.ramp.std(axis=(1,2), ddof=1)
+        if on_mean :
+            data_vec = np.nanmean(self.ramp, axis=axis)
+            err = self.ramp.std(axis=axis, ddof=1)
         elif on_median:
-            data_vec = self.ramp.mean(axis=(1,2))
-            err = self.ramp.std(axis=(1,2), ddof=1)
+            data_vec = np.nanmedian(self.ramp, axis=axis)
+            err = np.nanstd(self.ramp, axis=axis, ddof=1)
 
         else : 
             raise NotImplementedError('Fit per pixel not implemented yet')

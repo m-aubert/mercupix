@@ -113,17 +113,17 @@ def get_zscores(data, threshold_mad=9, threshold_std=5):
     mask = (z_mad >= threshold_mad) & (z_std >= threshold_std)
     return mask
 
-def get_window(data, stat_func='median', window_length=4, min_count=1, axis=0):
+def get_window(data, stat_func='median', window_length=5, min_count=1, axis=0):
     window = getattr(bn.move, f'move_{stat_func}')
     rolled_stat = window(data, window=window_length, min_count=min_count, axis=axis)
 
-    zscore = (data - rolled_stat)/median_abs_deviation(data, scale='normal', nan_policy='omit', axis=0)
+    zscore = (data - rolled_stat)/median_abs_deviation(data, scale='normal', nan_policy='omit', axis=axis)
     
-    return zscore , rolled_stat
+    return zscore, rolled_stat
 
 def get_cosmics(data, inpaint=True, cr_threshold_mad=7):
     """
-    
+
     """
     from astropy.stats import sigma_clip 
     
@@ -131,21 +131,21 @@ def get_cosmics(data, inpaint=True, cr_threshold_mad=7):
     
     diff_data = np.diff(data, axis=0)
 
-    zscore, med = get_window(diff_data, stat_func='median', window_length=4, min_count=1, axis=0)
+    zscore, med = get_window(diff_data, stat_func='median', window_length=5, min_count=1, axis=0)
     cr = zscore >= cr_threshold_mad
     
+    if inpaint :
+         diff_data = diff_data.copy()
+         diff_data[cr] = med[cr]
+         data = np.cumsum(np.append(data[0][None,:,:], diff_data, axis=0), axis=0)
+
     mask_frame0 = sigma_clip(data[0], 
                              cenfunc='median', 
                              stdfunc='mad_std', 
                              sigma_lower=100000, 
                              sigma_upper=cr_threshold_mad)
     
-    mask[np.concatenate([ mask_frame0.mask[None,:] , cr], axis=0)] = _BITFLAGS_DICT['CR']    
-    
-    if inpaint : 
-        diff_data = diff_data.copy()
-        diff_data[cr] = med[cr]
-        data = np.cumsum(np.append(diff_data[0][None,:,:] , diff_data, axis=0), axis=0)
+    mask[np.append(mask_frame0.mask[None,:,:] , cr, axis=0)] = _BITFLAGS_DICT['CR']    
     
     return mask, data
         
