@@ -69,7 +69,16 @@ class Exposure:
         #
         
         return cls(data=image, mask=dq, variance=var, metadata={})
-        
+    
+    
+    @classmethod
+    def from_fitresult(cls, result, metadata=None):
+        # Some redundancy to note.                
+        return cls(data=result.slope, 
+                   mask=result.mask2d, 
+                   var=result.var, 
+                   metadata=metadata)
+                
     def to_fits(self, data=None, mask=None, variance=None):
         """
         Output function that stores image in a fits file.
