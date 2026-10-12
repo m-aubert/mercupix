@@ -1,0 +1,11 @@
+__pycache__/
+*.egg-info/
+build/
+dist/
+.ruff_cache/
+
+# Documentation build products
+docs/_build/
+docs/api/generated/
+docs/notebooks/*.fits
+.ipynb_checkpoints/

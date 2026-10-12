@@ -20,12 +20,27 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-  "astropy",
-  "numpy",
-  "h5py", 
-  "scipy",
-  "scikit-image",
-  "bottleneck"]
+    # basics
+    "numpy",
+    "h5py",
+    "scipy",
+    "matplotlib",
+    # Data Science
+    "scikit-image",
+    "bottleneck",
+    "joblib",
+    # astro
+    "astropy",
+  ]
+
+[project.optional-dependencies]
+docs = [
+    "myst-nb",
+    "sphinx>=7.2",
+    "sphinx-book-theme",
+    "sphinx-copybutton",
+    "sphinx-design",
+  ]
 
 [project.urls]
 Source = "https://github.com/m-aubert/mercupix"
@@ -35,3 +50,20 @@ where = ["src"]
 
 [tool.setuptools.dynamic]
 version = {attr = "mercupix.__version__"}
+
+
+[tool.ruff]
+exclude = ["tests", "docs"]
+include = ["*.py"]
+
+[tool.ruff.lint]
+# Skip unused variable rules (`F841`).
+extend-ignore = ["F841", "E402",
+                "C408", # unneccessary dict call.
+                "B006", # Do not use mutable data structures for argument defaults
+                "SIM102", # use single ifs
+                "RUF012", # Mutable default value for class attribute"
+                "I001", # Import block is un-sorted or un-formatted
+                "RUF059", # Unpacked variable `pixelarea` is never used | that is for me to explicitely see all that is returned
+                "PIE790", # Unnecessary `pass` statement
+                ]
