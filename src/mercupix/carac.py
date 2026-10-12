@@ -86,12 +86,12 @@ def to_readout_order(data, ramp, channel=0, corr_refpix=True):
     ndarray
         Columns of ``channel`` in readout order.
     """
-    slice_, slice_channel = get_channel_slices(ramp, channel=channel, corr_refpix=corr_refpix)
+    _, slice_channel = get_channel_slices(ramp, channel=channel, corr_refpix=corr_refpix)
     
     if data.ndim == 3 : 
         return data[:,:, slice_channel] if channel%2 == 0 else data[:, :, slice_channel][:,:,::-1]
     elif data.ndim == 2 :        
-        return data[:, slice_channel] if channel%2 == 0 else data[:, slice_channel][:,:,::-1]
+        return data[:, slice_channel] if channel%2 == 0 else data[:,slice_channel][:,::-1]
 
 
 def get_readout_sequence(ramp,data=None, channel=0, frame=0, corr_refpix=True, pad=12):

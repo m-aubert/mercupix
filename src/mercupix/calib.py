@@ -64,7 +64,8 @@ def ipc_kernel(values, kernel=5,  nl=False) :
         ``(kernel, kernel)`` IPC kernel to be applied.
     """
     kernel = np.zeros((kernel, kernel))
-    kernel = np.fill_diagonal(kernel, values)
+    np.fill_diagonal(kernel, values)
+    
     return kernel
 
 
@@ -103,7 +104,7 @@ class PersistenceModel:
         gain = self.get_gain()
         dt = self.get_last_obs_dt()  # x would be last recorded fluence
         x, exptime = self.get_last_fluence()
-        x  = x * g * exptime #Need to think about units.
+        x  = x * gain * exptime #Need to think about units.
         # from tabulated data : 
         a_pers, x0, alpha, dx = self.get_tabulated_values()
         # BEWARE.

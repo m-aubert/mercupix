@@ -54,10 +54,25 @@ class Exposure:
         Metadata, as returned by `mercupix.io.fetch_metadata`. Default is
         None.
     """
-    def __init__(self, data=None, mask=None, variance=None,  metadata=None): 
+    def __init__(self, data=None, mask=None, var=None,  metadata=None): 
+        """
+        Exposure class
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            ndarray of (Nactpix, Nactpix), slope of the linear fit returned by the ramp fitting procedure, by default None
+        mask : ndarray, optional
+            ndarray of ints, (Nactpix, Nactpix), bitmask of the image, by default None
+        variance : ndarray , optional
+            Variance of the data, by default None
+        metadata : dict, optional
+            Metadata from fetch_metadata, by default None
+        """
         self.data = data
         self.mask = mask
         self.metadata = metadata
+        self.var= var
         
     @classmethod
     def from_filename(cls,filename):
@@ -87,7 +102,7 @@ class Exposure:
         # Add some metadata processing with header or something else.
         #
         
-        return cls(data=image, mask=dq, variance=var, metadata={})
+        return cls(data=image, mask=dq, var=var, metadata={})
     
     
     @classmethod
@@ -212,7 +227,7 @@ class MetaFrame(Exposure):
         --------
         mercupix.io.get_flatfield
         """
-        from io import get_flatfield
+        from .io import get_flatfield
         
         flat = get_flatfield(self.metadata)
         
@@ -293,7 +308,7 @@ class MultiRampExposure:
         return cls(images=list_of_images, dq=dq, var=var)
 
     @classmethod
-    def from_images(list_of_images):
+    def from_images(cls, list_of_images):
         """Build the combination from a list of images.
 
         Parameters
