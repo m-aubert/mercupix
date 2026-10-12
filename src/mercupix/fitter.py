@@ -12,13 +12,13 @@ import numpy as np
 import warnings
 
 # High level function
-def fit_ramp(rawramp,  method='LSQ', 
-                       persistence=False, 
+def fit_ramp(rawramp,  method='LSQ',
+                       persistence=False,
                        bfe=False,
                        crnl=False,
                        raw_ramp_kwargs={},
                        fit_args={},
-                       **kwargs): 
+                       **kwargs):
     """Fit a raw ramp with a given method.
 
     The ramp is first preprocessed with `~mercupix.ramp.RawRamp.preprocess_ramp`, then
@@ -57,21 +57,21 @@ def fit_ramp(rawramp,  method='LSQ',
     KeyError
         If ``method`` is not a registered fitter.
     """
-    try : 
-        fitter = model_register[method].from_rawramp(rawramp, 
+    try :
+        fitter = model_register[method].from_rawramp(rawramp,
                                                        ramp_kwargs=raw_ramp_kwargs,
                                                        **kwargs)
-        
+
     except KeyError as ke :
         raise KeyError(f"Fitter {method} does not exist")
-         
+
     result = fitter.fit(**fit_args)
-    
-    return result 
+
+    return result
 
 
 ## General Fitter level
-class Fitter(): 
+class Fitter():
     """Base class of the ramp fitters.
 
     Parameters
@@ -89,9 +89,9 @@ class Fitter():
         self._mask = mask
         if times is None:
             self._times = np.arange(data.shape[0])
-        else : 
+        else :
             self._times = times
-                
+
     @classmethod
     def from_rawramp(cls, rawramp, ramp_kwargs=dict(), **kwargs):
         """Build a fitter from a preprocessed raw ramp.
@@ -113,7 +113,7 @@ class Fitter():
         """
         datacube, varcube, mask = rawramp.preprocess_ramp(**ramp_kwargs)
         return cls(data=datacube, times=rawramp.times, mask=mask, **kwargs)
-        
+
     def get_model(self, pixels=None, coefs=None):
         """Evaluate the ramp model.
 
@@ -131,7 +131,7 @@ class Fitter():
             Ramp model. None in the base class.
         """
         return None
-        
+
     def get_residuals(self, data=None, pixels=None, coefs=None, model=None):
         """Compute the residuals between the data and the ramp model.
 
@@ -156,18 +156,18 @@ class Fitter():
         """
         if model is None:
             model = self.get_model(pixels=pixels, coefs=coefs)
-            
-        if data is None : 
-            data = self.data 
-            
+
+        if data is None :
+            data = self.data
+
         if pixels is None:
             residuals = data - model
         else:
             xpixel, ypixel = pixels
             residuals = data[:, xpixel, ypixel] - model
-            
+
         return residuals
-    
+
     def fit(self, data=None, inplace=False):
         """Fit the ramp.
 
@@ -187,7 +187,7 @@ class Fitter():
 
     # ================ #
     #   properties     #
-    # ================ #    
+    # ================ #
     @property
     def data(self):
         """Datacube to fit, of shape ``(ngroups, ny, nx)``."""
@@ -197,17 +197,17 @@ class Fitter():
     def times(self):
         """Time of each group, of shape ``(ngroups,)``."""
         return self._times
-    
+
     @property
     def _cached_fitted_times(self):
         """Times as used in the fit, cached on first access."""
         if not hasattr(self, "_hcached_fitted_times") or self._hcached_fitted_times is None:
             self._hcached_fitted_times = self.get_times()
-            
+
         return self._hcached_fitted_times
 
 
-class LSQFit(Fitter): 
+class LSQFit(Fitter):
     """Polynomial least-squares ramp fitter.
 
     Each pixel ramp is fitted with a polynomial of the group times. For
@@ -237,9 +237,9 @@ class LSQFit(Fitter):
 
     # ================ #
     #   method         #
-    # ================ #    
+    # ================ #
     # ------- #
-    # SETTER  # 
+    # SETTER  #
     # ------- #
     def set_polynome(self, degree, polytype="legendre", load=False):
         """Set the polynomial basis and reset the stored fit.
@@ -253,14 +253,14 @@ class LSQFit(Fitter):
         load : bool, optional
             Unused. Default is False.
         """
-        
-        self._polynome = {"type": polytype, 
-                          "degree": degree, 
+
+        self._polynome = {"type": polytype,
+                          "degree": degree,
                           "array": None,
                           "coefs": None,
-                         }            
+                         }
         self._hcached_fitted_times = None
-        
+
     def set_times(self, times):
         """Set the group times and reset the cached fitted times.
 
@@ -273,7 +273,7 @@ class LSQFit(Fitter):
         self._hcached_fitted_times = None
 
     # ------- #
-    # GETTER  # 
+    # GETTER  #
     # ------- #
     def get_times(self, as_fitted=True, polytype=None):
         """Get the group times.
@@ -299,7 +299,7 @@ class LSQFit(Fitter):
             polytype = self.polynome_type
 
         return self._times_to_polynomex(times=self.times, polytype=polytype)
-    
+
     def _fit(self, data=None, inplace=False):
         """Fit the polynomial coefficients.
 
@@ -318,7 +318,7 @@ class LSQFit(Fitter):
         """
         if data is None:
             data = self.data
-            
+
         coefs = self._fit_polynome_on_data(polynome=self.polynome_basis,
                                             data=data)
         if inplace:
@@ -345,9 +345,9 @@ class LSQFit(Fitter):
         """
         coefs = self._fit(data=data, inplace=inplace)
         offset, slope, nl = self.parse_coefs(coefs=coefs,in_adu=True)
-        
-        result = RampFitResults(slope=slope, 
-                       offset=offset, 
+
+        result = RampFitResults(slope=slope,
+                       offset=offset,
                        nl=nl)
         return result
 
@@ -383,7 +383,7 @@ class LSQFit(Fitter):
         """
         if progress_bar:
             from tqdm import tqdm
-            
+
         if data is None:
             data = self.data
 
@@ -394,20 +394,20 @@ class LSQFit(Fitter):
         if y_range is not None:
             print("y_range")
             data = data[:, y_range[0]:y_range[1], :]
-            
+
         # parse input
         firstframe, lastframe = frame_range
         if firstframe is None:
             firstframe = self.polynome_degree+1
-            
+
         elif firstframe < self.polynome_degree:
             warnings.warn("firstframe is lower than the number of degree. Issues are expected.")
-        
+
         if lastframe is None:
             lastframe = data.shape[0]
         elif lastframe < 0:
             lastframe = data.shape[0] + lastframe +1
-            
+
         # ---- #
         xframes = np.arange(*frame_range)
         coefs = []
@@ -415,15 +415,15 @@ class LSQFit(Fitter):
         for lastframe in xframes if not progress_bar else tqdm(xframes):
             this_data = data[:lastframe]
             this_times = self.times[:lastframe]
-            
+
             # this polynome case:
             polynome = self._polynome_of_times(this_times,
                                                  degree=self.polynome_degree,
                                                  polytype=self.polynome_type)
-    
+
             coefs.append( self._fit_polynome_on_data(polynome, data=this_data) )
             times.append( this_times.max() )
-            
+
         return xframes, np.asarray(times), np.asarray(coefs)
 
     def get_model(self, pixels=None, coefs=None):
@@ -452,9 +452,9 @@ class LSQFit(Fitter):
         else:
             xpixel, ypixel = pixels
             model = self.polynome_basis.T @ coefs[:, xpixel, ypixel]
-            
+
         return model
-        
+
     def parse_coefs(self, coefs=None, times=None, axis=None, in_adu=False):
         """Split the polynomial coefficients into offset, slope and higher orders.
 
@@ -491,9 +491,9 @@ class LSQFit(Fitter):
         if coefs is None:
             if self.polynome_coefs is None:
                 raise ValueError("no coefs given, none stored.")
-                
+
             coefs = self.polynome_coefs
-            
+
         if axis is None:
             # fetch which axis corresponds that of the degree:
             index = np.argwhere(np.asarray(coefs.shape) == self.polynome_degree+1).squeeze()
@@ -502,36 +502,35 @@ class LSQFit(Fitter):
                                  "Please set the degree axis")
             else:
                 axis = int(index)
-    
+
         # split the coefficients per interest
         offset, slope, nlinearities = np.split(coefs, [1, 2], axis=axis)
         offset = offset.squeeze()
         slope = slope.squeeze()
-    
+
         if in_adu:
             if self.polynome_type in ["leg", "legendre", "herm", "hermite"]:
-                # 
-                offset -= slope
+                # no implace, it actually affects the slope itself.
+                offset = offset-slope
 
-                
                 if times is None:
                     times = self.times
-                    
+
                 if slope.ndim > 2 and times.ndim != slope.ndim:
                     missing_dims = slope.ndim - times.ndim
                     times = times.reshape([times.shape[0] ]+ [1, ]*missing_dims)
-                        
+
                 elif slope.ndim == 2:
                     times = np.float32(self.times.max())
                 else:
                     # let's assume user know what they are doing.
                     pass
-                    
+
                 # broadcast.
                 slope = slope * 2/times
-    
+
         return offset, slope, nlinearities
-    
+
     # ------------- #
     #   internal    #
     # ------------- #
@@ -556,7 +555,7 @@ class LSQFit(Fitter):
         if polytype in ["leg", "legendre", "herm", "hermite"]:
             tmin, tmax = 0, np.max(times)
             times = ((times-tmin) / (tmax-tmin))*2 -1
-            
+
         return times
 
     @staticmethod
@@ -575,8 +574,8 @@ class LSQFit(Fitter):
         ndarray
             Coefficients of shape ``(degree + 1, ...)``.
         """
-        coefs = np.linalg.lstsq(polynome.T, 
-                                data.reshape(data.shape[0], -1), 
+        coefs = np.linalg.lstsq(polynome.T,
+                                data.reshape(data.shape[0], -1),
                                 rcond=None)[0]
         # reshaped back as data.
         return coefs.reshape(coefs.shape[0], *data.shape[1:])
@@ -604,22 +603,22 @@ class LSQFit(Fitter):
         NotImplementedError
             If ``polytype`` is unknown.
         """
-        if polytype in ["leg", "legendre"]: 
+        if polytype in ["leg", "legendre"]:
             from scipy.special import legendre
             pol = np.stack([legendre(i)(xnormed) for i in range(degree+1)])
-                
-        elif polytype in ["herm", "hermite"]: 
+
+        elif polytype in ["herm", "hermite"]:
             from scipy.special import hermitenorm
             pol = np.stack([hermitenorm(i)(xnormed) for i in range(degree+1)])
-            
+
         elif polytype in ["mono", "monomial"]:
             pol = np.stack([xnormed**i for i in range(degree+1)])
 
-        else: 
-            raise NotImplementedError("Unknown {polytype=} (legendre or hermite implemented)")
+        else:
+            raise NotImplementedError(f"Unknown {polytype=} (legendre or hermite implemented)")
 
         return pol.astype("float32")
-    
+
     @classmethod
     def _polynome_of_times(cls, times, degree, polytype):
         """Evaluate the polynomial basis at the given times.
@@ -642,10 +641,10 @@ class LSQFit(Fitter):
         return cls._get_polynome(degree=degree,
                                  polytype=polytype,
                                  xnormed=times)
-        
+
     # ================ #
     #   properties     #
-    # ================ #    
+    # ================ #
     @property
     def data(self):
         """Datacube to fit, of shape ``(ngroups, ny, nx)``."""
@@ -661,7 +660,7 @@ class LSQFit(Fitter):
         """Times as used in the fit, cached on first access."""
         if not hasattr(self, "_hcached_fitted_times") or self._hcached_fitted_times is None:
             self._hcached_fitted_times = self.get_times()
-            
+
         return self._hcached_fitted_times
 
     #  polynome
@@ -673,7 +672,7 @@ class LSQFit(Fitter):
     @property
     def polynome_degree(self):
         """Degree of the polynomial."""
-        return self._polynome.get("degree")    
+        return self._polynome.get("degree")
 
     @property
     def polynome_basis(self):
@@ -688,9 +687,9 @@ class LSQFit(Fitter):
     def polynome_coefs(self):
         """Stored polynomial coefficients, or None if not fitted in place."""
         return self._polynome.get("coefs", None)
-  
 
-class Brandt2024(Fitter):    
+
+class Brandt2024(Fitter):
     """Optimal ramp fitter with jump detection (Brandt 2024).
 
     The count rate is estimated from the group (resultant) differences by
@@ -757,61 +756,61 @@ class Brandt2024(Fitter):
     """
     def __init__(self, data, times=None, mask=None, readnoise=11, timeframe=None,
                  countrateguess=None, reset=False, nframes_list = [], rescale=True):
-        
-        
+
+
         self.frame_shape = data.shape[1:]
-        self.readnoise = np.atleast_1d(readnoise)     
+        self.readnoise = np.atleast_1d(readnoise)
         self.reset = reset
         self.rescale = rescale
-        
+
         diffgp = np.diff(data, axis=0)
-        
-        ### Frame in a function 
-        if len(nframes_list) == 0 : 
+
+        ### Frame in a function
+        if len(nframes_list) == 0 :
             nframes = np.ones(data.shape[0])
-            self.tauis = times.astype("float32")  
-            self.ti = times.astype("float32") 
-        else:     
+            self.tauis = times.astype("float32")
+            self.ti = times.astype("float32")
+        else:
             nframes = np.asarray(nframes_list)
             tau = []
             mean_t = []
-            for i, ni in enumerate(nframes) : 
+            for i, ni in enumerate(nframes) :
                 if ni > 1 :
                     # Reverse engineer the time of each read.
-                    # Assumes to be even.   
+                    # Assumes to be even.
                     tk = np.linspace(times[i-1], times[i], num=ni+1)[1:]
                     mean_ti = np.linspace(times[i-1], times[i], num=ni+1)[1:].mean()
                     mean_t.append(mean_ti)
-                else : 
+                else :
                     # Some resultant can still be only 1 frame.
                     tk = times[i]
                     mean_t.append(times[i])
 
                 taui = sum([(2 * ni - 2 * i + 1)*tki for i, tki in zip(range(1,ni+1), np.atleast_1d(tk))])/ni**2
                 tau.append(taui)
-            
+
                 self.ti = np.asarray(mean_t, dtype='float32') # Making sure no risk of changing dtype.
-                self.tauis = np.asarray(tau, dtype='float32') 
+                self.tauis = np.asarray(tau, dtype='float32')
         ### End of to frame in functions.
-    
+
         self.vari = self.readnoise**2/nframes
-        
+
         self.diffti = np.diff(self.ti, axis=0)
 
-        if reset : 
+        if reset :
             diffgp = np.append(([data[0]/self.ti[0]]), diffgp, axis=0)
             self.diffti = np.append(np.array([self.ti[0]]) , self.diffti, axis=0)
-        
+
         expand_dims = [None]*(diffgp.ndim-1)
         expand_dims = (slice(None), *expand_dims)
         self.diffd = (diffgp/self.diffti[expand_dims]).reshape(diffgp.shape[0], -1)
 
-        self.countrateguess = countrateguess 
+        self.countrateguess = countrateguess
         self.ndiff = self.diffd.shape[0]
         self.npix = self.diffd.shape[1:]
-        
+
         self.diffmask = np.ones_like(self.diffd, dtype='int8')
-        if mask is not None : 
+        if mask is not None :
             mask = mask.reshape((self.ndiff+1, *self.npix)).astype(bool)
             self.diffmask[mask[1:,:]] = 0
             self.diffmask[mask[:-1,:]] = 0
@@ -819,7 +818,7 @@ class Brandt2024(Fitter):
         # Move to property.
         self.sign = np.asarray((-1)**np.arange(1,self.ndiff+1))#, dtype='float32')
 
-    
+
     def get_alpha_beta_scale(self, mask=None, countrateguess=None):
         """Get the diagonals of the difference covariance matrix.
 
@@ -845,21 +844,21 @@ class Brandt2024(Fitter):
 
         if countrateguess is None :
             # Ugly one liner
-            countrateguess = self.get_countrateguess(mask=mask) if self.countrateguess is None else self.countrateguess 
-    
+            countrateguess = self.get_countrateguess(mask=mask) if self.countrateguess is None else self.countrateguess
+
         alpha, beta = self._get_covar(countrateguess)
-        
-        if self.rescale : 
-            scale = alpha[0] 
+
+        if self.rescale :
+            scale = alpha[0]
             alpha = alpha/scale
             beta = beta/scale
 
-        else : 
+        else :
             scale = np.float32(1.)
-            
+
         return alpha, beta, scale
-                
-    def get_countrateguess(self, diffd=None, mask=None): 
+
+    def get_countrateguess(self, diffd=None, mask=None):
         """Estimate the count rate as the mean of the differences.
 
         Parameters
@@ -877,18 +876,18 @@ class Brandt2024(Fitter):
             Count rate guess of shape ``(npix,)``. The first difference is
             ignored if ``reset`` is True.
         """
-        if diffd is None : 
-            diffd = self.diffd 
-        if mask is not None : 
-            diffd *= mask 
-        if self.reset: 
+        if diffd is None :
+            diffd = self.diffd
+        if mask is not None :
+            diffd *= mask
+        if self.reset:
             countrateguess = self.diffd[1:].mean(axis=0)
-        else : 
+        else :
             countrateguess = self.diffd.mean(axis=0)
-            
-        return countrateguess   
-                
-    def fit(self, inplace=True, jumps=False, jump_threshold=[20,30]): 
+
+        return countrateguess
+
+    def fit(self, inplace=True, jumps=False, jump_threshold=[20,30]):
         """Fit the ramp.
 
         Parameters
@@ -914,12 +913,12 @@ class Brandt2024(Fitter):
         get_slope
         """
         result = self.get_slope(jumps=jumps, jump_threshold=jump_threshold)
-        
+
         if inplace :
             self.result = result
-                        
+
         return result
-    
+
     def get_model(self, pixels=None, coefs=None, intercept=False, coefid=0):
         """Evaluate the linear ramp model.
 
@@ -943,23 +942,23 @@ class Brandt2024(Fitter):
             ``pixels`` is given.
         """
         # Here linear model
-        if coefs is None : 
+        if coefs is None :
             coefs = self.result.slope
-               
-        if len(coefs) > 1 and intercept :    
-            # Simple A*t + b model               
-            model = coefs[0]*self.ti[:,None,None] + coefs[1]        
-        else:
-            # Simple A*t + b                
-            model = coefs*self.ti[:,None,None] 
 
-        if pixels : 
+        if len(coefs) > 1 and intercept :
+            # Simple A*t + b model
+            model = coefs[0]*self.ti[:,None,None] + coefs[1]
+        else:
+            # Simple A*t + b
+            model = coefs*self.ti[:,None,None]
+
+        if pixels :
             xpixel , ypixel = pixels
             model = model[:, xpixel, ypixel]
-            
+
         return model
-        
-    def _get_covar(self, countrateguess) : 
+
+    def _get_covar(self, countrateguess) :
         """Compute the diagonals of the difference covariance matrix.
 
         Parameters
@@ -978,43 +977,43 @@ class Brandt2024(Fitter):
 
         ndim = countrateguess.ndim if hasattr(countrateguess , 'ndim') else 1
         expand_dims = list(range(1,ndim+1))
-        
-        var = self.vari 
-        t = self.ti 
-        tau = self.tauis 
-        diffti = self.diffti 
-        
-        lalpha_diag = (var[1:]+var[:-1])/diffti**2  
+
+        var = self.vari
+        t = self.ti
+        tau = self.tauis
+        diffti = self.diffti
+
+        lalpha_diag = (var[1:]+var[:-1])/diffti**2
         ralpha_diag = 1/(diffti**2) * (tau[1:]+tau[:-1] - 2*t[:-1])
-        
-        if lalpha_diag.ndim <= ndim : 
+
+        if lalpha_diag.ndim <= ndim :
             lalpha_diag = np.expand_dims(lalpha_diag, expand_dims)
             ralpha_diag = np.expand_dims(ralpha_diag, expand_dims)
-        
+
         alpha_diag = lalpha_diag + countrateguess*ralpha_diag
-        
+
         lbeta_diag = (-var[1:-1])/(diffti[1:]*diffti[:-1])
         rbeta_diag = 1/(diffti[1:]*diffti[:-1]) * (t[1:-1] - tau[1:-1])
 
-        if lbeta_diag.ndim <= ndim : 
+        if lbeta_diag.ndim <= ndim :
             lbeta_diag = np.expand_dims(lbeta_diag, expand_dims)
             rbeta_diag = np.expand_dims(rbeta_diag, expand_dims)
-            
+
         beta_diag = lbeta_diag + countrateguess*rbeta_diag
-        
-        if self.reset : 
+
+        if self.reset :
             a0 = np.expand_dims((var[0] + countrateguess*tau[0])/ t[0]**2, expand_dims)
             b0 = np.expand_dims((var[0] + countrateguess*(t[0] - tau[0]))/(t[0]*diffti[0]), expand_dims)
-            
+
             alpha_diag = np.append(a0, alpha_diag, axis=0)
             beta_diag = np.append(b0, beta_diag, axis=0)
-            
+
         return alpha_diag, beta_diag
-             
+
     def get_slope(self,
-                  jumps=False, 
+                  jumps=False,
                   intercept=False,
-                  jump_threshold=[20,30], 
+                  jump_threshold=[20,30],
                   max_niter=5):
         """Estimate the slope, optionally omitting the jumps.
 
@@ -1044,55 +1043,55 @@ class Brandt2024(Fitter):
         ValueError
             If ``jumps`` and ``reset`` are both True.
         """
-        
-        ndrops = 1 
+
+        ndrops = 1
         slope = None
-        diffmask = self.diffmask.copy() 
-        diffd = self.diffd*diffmask 
+        diffmask = self.diffmask.copy()
+        diffd = self.diffd*diffmask
         detected_jump = np.ones_like(diffmask)
-        
-        if jumps : 
+
+        if jumps :
             n=0
-            if all([self.reset, jumps]): 
+            if all([self.reset, jumps]):
                 raise ValueError('jumps and intercept cannot be done at the same time')
 
-            while ndrops > 0 and n < max_niter: 
-                result, newmask, ndrops = self._slope_iteration(diffd=diffd, 
-                                                                countrateguess=slope, 
-                                                                diffmask=diffmask, 
+            while ndrops > 0 and n < max_niter:
+                result, newmask, ndrops = self._slope_iteration(diffd=diffd,
+                                                                countrateguess=slope,
+                                                                diffmask=diffmask,
                                                                 intercept=False,
-                                                                jumps=jumps, 
+                                                                jumps=jumps,
                                                                 jump_threshold=jump_threshold)
-                
+
                 detected_jump *=newmask #jump only
                 diffmask *=newmask  #combine mask and jumps
                 slope = result.slope
-                diffd = self.diffd*diffmask 
+                diffd = self.diffd*diffmask
                 n+=1
 
             #if ndrops > 0:
-            # Add Warning for cosmic detection ?    
+            # Add Warning for cosmic detection ?
 
 
         # Debiasing - last run without any interuption. Best countrateguess option.
         # Readnoise's role is TBD. Plays a lot in the jump_threshold.
-        result, _, _ = self._slope_iteration(diffd=diffd*diffmask, 
-                                             countrateguess=slope, 
-                                             intercept=intercept, 
-                                             diffmask=diffmask, 
+        result, _, _ = self._slope_iteration(diffd=diffd*diffmask,
+                                             countrateguess=slope,
+                                             intercept=intercept,
+                                             diffmask=diffmask,
                                              jumps=False)
 
-        result.set_mask2d(detected_jump.sum(axis=0)) 
-        result.reshape(self.frame_shape, reshape_only=['slope', 
+        result.set_mask2d(detected_jump.sum(axis=0))
+        result.reshape(self.frame_shape, reshape_only=['slope',
                                                        'mask2d',
-                                                       'qof', 
+                                                       'qof',
                                                        'offset',
                                                        'var'])
         # Mask 2D will flag pixels.
         # TBD if we want to know how many times the pixels was found to be whacky.
-        return result 
-        
-    def _slope_iteration(self, diffd=None, diffmask=None, countrateguess=None, 
+        return result
+
+    def _slope_iteration(self, diffd=None, diffmask=None, countrateguess=None,
                         jumps=False, jump_threshold=[20, 30], intercept=False):
         """Run a single slope estimation, optionally detecting jumps.
 
@@ -1131,67 +1130,67 @@ class Brandt2024(Fitter):
             If ``jumps`` and ``intercept`` are both True.
         """
 
-        if diffd is None : 
+        if diffd is None :
             diffd = self.diffd
-        if countrateguess is None : 
+        if countrateguess is None :
             countrateguess = self.countrateguess
-        if diffmask is None : 
+        if diffmask is None :
             diffmask = np.ones_like(self.diffd, dtype='int8')
 
-        diffd *= diffmask 
+        diffd *= diffmask
 
-        alpha, beta, scale = self.get_alpha_beta_scale(countrateguess=countrateguess) 
-        
+        alpha, beta, scale = self.get_alpha_beta_scale(countrateguess=countrateguess)
+
         beta *=  diffmask[1:]*diffmask[:-1]
-        
+
         theta = self._get_theta(alpha, beta)
         phi = self._get_phi(alpha,beta)
-        
-        Phi = self._get_Phi(beta,phi)        
-        Theta = self._get_Theta(beta,theta)    
-        
-        ThetaD = self._get_ThetaD(diffd, beta,theta)    
-        
+
+        Phi = self._get_Phi(beta,phi)
+        Theta = self._get_Theta(beta,theta)
+
+        ThetaD = self._get_ThetaD(diffd, beta,theta)
+
         theta_term = self.sign[:,None] / theta[-1]
-        
+
         dC = theta_term * (phi[1:]*Theta+theta[:-1]*Phi)
         dC *= diffmask
-        
-        B = np.sum(diffd*dC, axis=0)        
+
+        B = np.sum(diffd*dC, axis=0)
         C = np.sum(dC, axis=0)
-        
-        A = 2*np.sum(diffd[1:] * theta_term[1:] * phi[2:] * ThetaD[1:-1] * beta, axis=0) 
+
+        A = 2*np.sum(diffd[1:] * theta_term[1:] * phi[2:] * ThetaD[1:-1] * beta, axis=0)
         A += 2*(diffd[0] * theta_term[0] * phi[1] * ThetaD[0]) # beta0 = 1
         A += np.sum((diffd)**2 * theta[:-1] * phi[1:] / theta[-1], axis=0)
-                    
+
         slope = B/C
-        uncert = scale/C 
+        uncert = scale/C
         totchi2 = (A - B**2/C)/scale
-        
+
         # Prepare output
         newmask = 1
-        ndrops = 0    
-        if jumps : 
+        ndrops = 0
+        if jumps :
             if all([jumps, intercept]):
                 raise ValueError('Jumps and intercept cannot both be true')
-            
+
             slope, newmask, ndrops = self._jump_iteration(diffd, beta, theta, phi,
                                 ThetaD, theta_term, A, B, C, dC,
                                 scale, totchi2, slope, jump_threshold=jump_threshold)
-            
-        result = RampFitResults(slope=slope, 
+
+        result = RampFitResults(slope=slope,
                         var=uncert,
                         qof=totchi2)
-           
+
         if intercept :
             result = self._get_slope_intercept(diffd, beta, theta, phi, Phi, Theta,
                         ThetaD, A, B, C, scale, ktc_prior=None)
 
         return result, newmask, ndrops
-                                 
-                            
+
+
     def _jump_iteration(self, diffd, beta, theta, phi,
-                        ThetaD, theta_term, A, B, C, dC, scale, 
+                        ThetaD, theta_term, A, B, C, dC, scale,
                         totchi2, slope, jump_threshold=None):
         """Find the best one or two consecutive differences to omit.
 
@@ -1236,26 +1235,26 @@ class Brandt2024(Fitter):
         ndrops : int
             Number of pixels with omitted differences.
         """
-         
+
         PhiD = self._get_PhiD(diffd, beta, phi)
-    
+
         cd = self._get_cov_diag(theta, phi)
         dB =  theta_term * (phi[1:]*ThetaD[1:] + theta[:-1]*PhiD)
-        
+
         oneomit_slope = (cd * B - dB * dC) / (C * cd - dC**2) # Newcountrate.
         b = (dB - oneomit_slope*dC) / cd
 
-        oneomit_chi2 = (A + oneomit_slope**2 * C - 
-                        2 * oneomit_slope * B + b**2 * cd - 
+        oneomit_chi2 = (A + oneomit_slope**2 * C -
+                        2 * oneomit_slope * B + b**2 * cd -
                         2 * b * dB + 2 * oneomit_slope * b * dC)/scale
-                
+
         cod = self._get_cov_offdiag(beta, theta, phi)
-            
+
         factornew = dC[:-1]**2 - C*cd[:-1]
         factornew2 = dC[1:]*dC[:-1] - C*cod
         factornew3 = B*dC[:-1] - dB[1:] * C
 
-        c = factornew3 / factornew - (B * dC[1:] - dB[1:] * C)/factornew2    
+        c = factornew3 / factornew - (B * dC[1:] - dB[1:] * C)/factornew2
         c /= factornew2/factornew - (dC[1:]**2 - C * cd[1:])/factornew2
 
         b2 = (factornew3 - c*factornew2)/factornew
@@ -1271,29 +1270,29 @@ class Brandt2024(Fitter):
 
         best_dchi_one = dchi_one.max(axis=0)
         best_dchi_two = dchi_two.max(axis=0)
-        
+
         whichdrop = dchi_one.max(axis=0) - jump_threshold[0] > dchi_two.max(axis=0) - jump_threshold[1]
-        
+
         bestchi2 = best_dchi_one * (best_dchi_one> jump_threshold[0]) * whichdrop
         bestchi2 += best_dchi_two * (best_dchi_two > jump_threshold[1]) * (~whichdrop)
         bestchi2[bestchi2 == 0] = np.nan
-        
+
         dropone = (dchi_one == bestchi2) & whichdrop
         droptwo = (dchi_two == bestchi2) & (~whichdrop)
 
-        # Change sign 
+        # Change sign
         droptot = np.ones_like(dropone)
         droptot *= ~dropone
         droptot[1:] *= ~droptwo
         droptot[:-1] *= ~droptwo
-            
-        slope[dropone.sum(axis=0).astype(bool)] = oneomit_slope[dropone] 
-        slope[droptwo.sum(axis=0).astype(bool)] = twoomit_slope[droptwo]  
-        
+
+        slope[dropone.sum(axis=0).astype(bool)] = oneomit_slope[dropone]
+        slope[droptwo.sum(axis=0).astype(bool)] = twoomit_slope[droptwo]
+
         ndrops = np.any([dropone.sum(axis=0), droptwo.sum(axis=0)], axis=0).sum()
-        
+
         return slope, droptot, ndrops
-    
+
     def _get_slope_intercept(self, diffd, beta, theta, phi, Phi, Theta,
                         ThetaD, A, B, C, scale, ktc_prior=None):
         """Estimate the slope and offset jointly.
@@ -1324,15 +1323,15 @@ class Brandt2024(Fitter):
             Result with ``slope``, ``offset``, ``var`` (covariance of slope
             and offset) and ``qof``.
         """
-        if ktc_prior is not None :  
+        if ktc_prior is not None :
             z, zerr = ktc_prior
             z_term1 = z/zerr**2
             z_term2 = 1/zerr**2
-            
-        else : 
+
+        else :
             z_term1 = 0
             z_term2 = 0
-        
+
         PhiD = self._get_PhiD(diffd, beta, phi)
 
         c11 = theta[0]/theta[-1] * phi[2]
@@ -1340,14 +1339,14 @@ class Brandt2024(Fitter):
         bp1 = 1/theta[-1] * (phi[2]*ThetaD[1] + theta[0]*PhiD[1])
 
         b = (bp1 / self.ti[1] - cp1*B / (C*self.ti[1]) + z_term1)
-        b /= (c11/self.ti[1]**2 - cp1**2/ (C*self.ti[1]) + z_term2) 
-        
+        b /= (c11/self.ti[1]**2 - cp1**2/ (C*self.ti[1]) + z_term2)
+
         a = B/C - b*(cp1*B / (C*self.ti[1]))
-                
+
         cov_ab = np.array([C , cp1 / self.ti[1], [cp1 / self.ti[1], c11/self.ti[1]**2 + z_term2]])
-    
-        chi2 = A + a**2*C + b**2/self.ti[1]**2 * c11 - 2*b/self.ti[1] * bp1 
-        chi2 += -2*a*B + 2*a*b/self.ti[1]*cp1 
+
+        chi2 = A + a**2*C + b**2/self.ti[1]**2 * c11 - 2*b/self.ti[1] * bp1
+        chi2 += -2*a*B + 2*a*b/self.ti[1]*cp1
         if z_term2 != 0:
             chi2 += (b-z)**2 / zerr
 
@@ -1355,9 +1354,9 @@ class Brandt2024(Fitter):
                                 offset=b,
                                 var=(cov_ab),
                                 qof=chi2/scale)
-        
-        return result 
-    
+
+        return result
+
     def _get_cov_diag(self, theta, phi):
         """Compute the diagonal terms of the omitted-difference covariance.
 
@@ -1372,7 +1371,7 @@ class Brandt2024(Fitter):
             Diagonal terms, of shape ``(ndiff, npix)``.
         """
         return theta[:-1]/theta[self.ndiff] * phi[1:]
-    
+
     def _get_cp1_term(self, phi, theta, Theta, Phi):
         """Compute the cross term between the slope and each difference.
 
@@ -1426,7 +1425,7 @@ class Brandt2024(Fitter):
         """
         return -beta * theta[:-2] * phi[2:] / theta[self.ndiff]
 
-    def _get_PhiD(self, diffd, beta, phi): 
+    def _get_PhiD(self, diffd, beta, phi):
         """Compute the data-weighted backward recursion term.
 
         Parameters
@@ -1443,12 +1442,12 @@ class Brandt2024(Fitter):
         ndarray
             Recursion term of shape ``(ndiff, npix)``.
         """
-        PhiD = np.zeros((self.ndiff, *self.npix))       
+        PhiD = np.zeros((self.ndiff, *self.npix))
         for i in range(self.ndiff - 2, -1, -1):
-                PhiD[i] = (PhiD[i+1] + self.sign[i+1] * diffd[i+1] * phi[i+2]) * beta[i] 
-        
+                PhiD[i] = (PhiD[i+1] + self.sign[i+1] * diffd[i+1] * phi[i+2]) * beta[i]
+
         return PhiD
-        
+
     def _get_theta(self, alpha, beta):
         """Compute the forward recursion term (leading principal minors).
 
@@ -1464,13 +1463,13 @@ class Brandt2024(Fitter):
         ndarray
             Recursion term of shape ``(ndiff + 1, npix)``.
         """
-        theta = np.ones((self.ndiff+1, *self.npix))         
+        theta = np.ones((self.ndiff+1, *self.npix))
         theta[1] = alpha[0]
         for i in range(2,self.ndiff+1):
             theta[i] = alpha[i-1] * theta[i-1] - beta[i-2]**2 * theta[i-2]
-                    
+
         return theta
-    
+
     def _get_phi(self, alpha, beta):
         """Compute the backward recursion term (trailing principal minors).
 
@@ -1486,14 +1485,14 @@ class Brandt2024(Fitter):
         ndarray
             Recursion term of shape ``(ndiff + 1, npix)``.
         """
-        phi = np.ones((self.ndiff+1, *self.npix))        
-        phi[self.ndiff-1] = alpha[self.ndiff-1] 
+        phi = np.ones((self.ndiff+1, *self.npix))
+        phi[self.ndiff-1] = alpha[self.ndiff-1]
         for i in range(self.ndiff-2, -1, -1):
-            phi[i] = alpha[i] * phi[i+1] 
+            phi[i] = alpha[i] * phi[i+1]
             phi[i] -= beta[i]**2 * phi[i+2]
-            
-        return phi   
-    
+
+        return phi
+
     def _get_Phi(self, beta, phi):
         """Compute the cumulative backward recursion term.
 
@@ -1509,13 +1508,13 @@ class Brandt2024(Fitter):
         ndarray
             Recursion term of shape ``(ndiff, npix)``.
         """
-        Phi = np.zeros((self.ndiff, *self.npix))    
+        Phi = np.zeros((self.ndiff, *self.npix))
         for i in range(self.ndiff-2, -1, -1):
-            Phi[i] = beta[i]*Phi[i+1] 
+            Phi[i] = beta[i]*Phi[i+1]
             Phi[i] += self.sign[i+1]*beta[i]*phi[i+2]
-                        
-        return Phi    
-    
+
+        return Phi
+
     def _get_Theta(self, beta, theta):
         """Compute the cumulative forward recursion term.
 
@@ -1531,15 +1530,15 @@ class Brandt2024(Fitter):
         ndarray
             Recursion term of shape ``(ndiff, npix)``.
         """
-        Theta = np.zeros((self.ndiff, *self.npix))          
+        Theta = np.zeros((self.ndiff, *self.npix))
         Theta[0] = -theta[0]
         for i in range(1,self.ndiff):
-            Theta[i] = beta[i-1]*Theta[i-1] 
+            Theta[i] = beta[i-1]*Theta[i-1]
             Theta[i] += self.sign[i]*theta[i]
-                    
+
         return Theta
-            
-    def _get_ThetaD(self, diffd, beta, theta): 
+
+    def _get_ThetaD(self, diffd, beta, theta):
         """Compute the data-weighted forward recursion term.
 
         Parameters
@@ -1556,16 +1555,16 @@ class Brandt2024(Fitter):
         ndarray
             Recursion term of shape ``(ndiff + 1, npix)``.
         """
-        
-        ThetaD = np.zeros((self.ndiff+1, *self.npix))            
+
+        ThetaD = np.zeros((self.ndiff+1, *self.npix))
         ThetaD[1] = -diffd[0] * theta[0]
         for i in range(1,self.ndiff):
-            ThetaD[i+1] =  beta[i-1]*ThetaD[i] 
+            ThetaD[i+1] =  beta[i-1]*ThetaD[i]
             ThetaD[i+1] += self.sign[i]*diffd[i]*theta[i]
-            
+
         return ThetaD
-      
-class Kubik2015(Fitter): 
+
+class Kubik2015(Fitter):
     """Flux estimator from group differences (Kubik et al. 2016).
 
     Parameters
@@ -1581,7 +1580,7 @@ class Kubik2015(Fitter):
     def __init__(self, data, times=None, macc=None):
         self.diff = np.diff(data, axis=0)
         self.tpf = np.diff(times).mean() #Time/frame.
-        if macc is not None : 
+        if macc is not None :
             self.ng, self.nf, self.nd = macc
         else :
             self.ng = data.shape[0]
@@ -1591,7 +1590,7 @@ class Kubik2015(Fitter):
         self.alpha = (1-self.nf**2)/(3*self.nf+self.nd)
 
         self.pixshape = data.shape[1:]
-    
+
     def estim_f(self, sigma_r=10):
         """Estimate the flux.
 
@@ -1605,13 +1604,13 @@ class Kubik2015(Fitter):
         ndarray
             Flux per group interval, of shape ``(ny, nx)``.
         """
-        
+
         xi = (1+self.alpha)/2.
         beta = 2*sigma_r**2 / (1+self.alpha)
         m2 = np.sum( (self.diff + beta)**2, axis=0) / (self.ng-1)
-        
+
         return np.sqrt(xi**2 + m2 - xi - beta)
-        
+
     def estim_sigf(self,sigma_r, fe):
         """Estimate the variance of the flux.
 
@@ -1631,9 +1630,9 @@ class Kubik2015(Fitter):
         beta_ =  2*sigma_r**2 / (1+self.alpha)
         g_ = self.estim_f(sigma_r)
         term  = 2*(g_+beta_)**2 /  ((self.ng-1)*
-                                    (1+2*fe/(1+alpha_) * 
+                                    (1+2*fe/(1+alpha_) *
                                      (g_+beta_)))
-        
+
         return term
 
     def fit(self, readnoise=10, fe=1, inplace=True):
@@ -1653,14 +1652,14 @@ class Kubik2015(Fitter):
         -------
         RampFitResults
             Result with the ``slope`` and ``var``.
-        """        
+        """
         slope = self.estim_f(sigma_r=readnoise)
         err = self.estim_sigf(readnoise, fe)
-        
+
         self.result = RampFitResults(slope=slope, var=err)
-        
-        return self.result 
-            
+
+        return self.result
+
     def get_model(self, pixels=None, coefs=None):
         """Evaluate the linear ramp model ``slope * t``.
 
@@ -1679,16 +1678,16 @@ class Kubik2015(Fitter):
             Model of shape ``(ngroups, ny, nx)``, or ``(ngroups,)`` if
             ``pixels`` is given.
         """
-        if coefs is None : 
-            coefs = self.result.slope 
+        if coefs is None :
+            coefs = self.result.slope
 
-        # Simple A*t model               
-        model = coefs*self.times[:,None,None] 
+        # Simple A*t model
+        model = coefs*self.times[:,None,None]
 
-        if pixels : 
+        if pixels :
             xpixel , ypixel = pixels
             model = model[:, xpixel, ypixel]
-            
+
         return model
 
 
@@ -1714,68 +1713,68 @@ class RampFitResults():
     model : str, optional
         Name of the fitter. Default is ``'LSQFit'``.
     """
-    
-    _reshape_ok = ['slope', 
+
+    _reshape_ok = ['slope',
                     'mask2d',
                     'mask3d',
                     'qof',
                     'offset',
                     'nl',
                     'var']
-    
+
     def __init__(self, slope=None, mask2d=None, mask3d=None, var=None,
                         qof=None, offset=None, nl=None, model='LSQFit'):
-        
+
         self._slope = slope
         self._mask2d  = mask2d
         self._mask3d = mask3d
         self._qof = qof
         self._offset = offset
         self._nl =  nl
-        self._model = model 
+        self._model = model
         self._var = var
-        
+
     @property
-    def slope(self): 
+    def slope(self):
         """Fitted slope (count rate)."""
         return self._slope
-    
+
     @property
-    def mask2d(self): 
+    def mask2d(self):
         """2D data quality mask."""
         return self._mask2d
-    
+
     @property
-    def mask3d(self): 
+    def mask3d(self):
         """3D (per group) data quality mask."""
         return self._mask3d
-    
+
     @property
-    def qof(self): 
+    def qof(self):
         """Quality of fit, e.g. the chi-square."""
         return self._qof
-    
+
     @property
-    def offset(self): 
+    def offset(self):
         """Fitted offset."""
         return self._offset
-    
+
     @property
-    def nl(self): 
+    def nl(self):
         """Fitted non-linear coefficients."""
         return self._nl
-    
+
     @property
-    def model(self): 
+    def model(self):
         """Name of the fitter."""
         return self._model
 
     @property
-    def var(self): 
+    def var(self):
         """Variance of the slope."""
         return self._var
-    
-    def set_slope(self, slope): 
+
+    def set_slope(self, slope):
        """Set the slope (count rate).
 
        Parameters
@@ -1784,8 +1783,8 @@ class RampFitResults():
            New value.
        """
        self._slope = slope
-    
-    def set_mask2d(self, mask2d): 
+
+    def set_mask2d(self, mask2d):
         """Set the 2D data quality mask.
 
         Parameters
@@ -1794,8 +1793,8 @@ class RampFitResults():
             New value.
         """
         self._mask2d = mask2d
-    
-    def set_mask3d(self, mask3d): 
+
+    def set_mask3d(self, mask3d):
         """Set the 3D (per group) data quality mask.
 
         Parameters
@@ -1825,30 +1824,30 @@ class RampFitResults():
             If ``reshape_only`` contains an attribute that cannot be
             reshaped.
         """
-        if reshape_only is None : 
+        if reshape_only is None :
             reshape_only = self._reshape_ok
-        
-        else: 
+
+        else:
             reshape_only = np.atleast_1d(reshape_only)
-            valid = all(val in self._reshape_ok for val in reshape_only)  
-            if not valid : 
+            valid = all(val in self._reshape_ok for val in reshape_only)
+            if not valid :
                 raise ValueError(f'Only {self._reshape_ok} attributes can be reshaped.')
-    
-        for name in reshape_only: 
+
+        for name in reshape_only:
             arr = getattr(self, '_'+name)
-            if arr is None : 
+            if arr is None :
                 continue
             arr = np.asanyarray(arr)
             if arr.size != np.prod(shape):
-                shape_ = (arr.shape[0], *shape) 
+                shape_ = (arr.shape[0], *shape)
                 # Assumes first dimension should be always kept.
-            else : 
+            else :
                 shape_ = shape
-                
+
             setattr(self, '_'+name, arr.reshape(*shape_))
 
-    
-    
+
+
 class IP2IBestFit(Fitter):
     """Likelihood-based fitter accounting for non-linearity, BFE and persistence.
 
@@ -1858,8 +1857,8 @@ class IP2IBestFit(Fitter):
     """
     pass
      #likelihood based method ?
-     # Placeholder for now : 
-     # Ambition : 
+     # Placeholder for now :
+     # Ambition :
      # Accounts for additional NL.
      # Accounts for BFE.
      # Accounts (correct) for persistence.
