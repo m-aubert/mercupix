@@ -1,6 +1,6 @@
 """Data quality bitmasks and pixel flagging.
 
-Each flag is a power of two, defined in `_BITFLAGS_DICT`:
+Each flag is a power of two, defined in ``_BITFLAGS_DICT``:
 
 - ``GOOD`` (0): good pixel,
 - ``DIS`` (1): disconnected (dead) pixel,
@@ -43,7 +43,7 @@ def get_boolmask(mask, bitflags=_BITFLAGS_DICT, **kwargs):
         Integer bitmask.
     bitflags : dict, optional
         Mapping between flag names and bit values. Default is
-        `_BITFLAGS_DICT`.
+        ``_BITFLAGS_DICT``.
     **kwargs
         Passed to `astropy.nddata.bitmask.bitfield_to_boolean_mask`, e.g.
         ``ignore_flags`` to select the flags to consider.
@@ -219,7 +219,7 @@ def get_window(data, stat_func='median', window_length=5, min_count=1, axis=0):
     data : ndarray
         Input data, e.g. group differences.
     stat_func : str, optional
-        Moving statistic, as named in `bottleneck` (``'median'``,
+        Moving statistic, as named in ``bottleneck`` (``'median'``,
         ``'mean'``, ...). Default is ``'median'``.
     window_length : int, optional
         Length of the moving window. Default is 5.

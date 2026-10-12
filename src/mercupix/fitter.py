@@ -1,6 +1,6 @@
 """Ramp fitting methods and their results.
 
-Available fitters are registered in `model_register`:
+Available fitters are registered in ``model_register``:
 
 - ``'LSQ'``: `LSQFit`, polynomial least-squares fit,
 - ``'Kubik'``: `Kubik2015`, group-difference estimator,
@@ -21,7 +21,7 @@ def fit_ramp(rawramp,  method='LSQ',
                        **kwargs): 
     """Fit a raw ramp with a given method.
 
-    The ramp is first preprocessed with `RawRamp.preprocess_ramp`, then
+    The ramp is first preprocessed with `~mercupix.ramp.RawRamp.preprocess_ramp`, then
     fitted with the fitter registered under ``method``.
 
     Parameters
@@ -29,7 +29,7 @@ def fit_ramp(rawramp,  method='LSQ',
     rawramp : mercupix.ramp.RawRamp
         Raw ramp to fit.
     method : str, optional
-        Fitting method, a key of `model_register`: ``'LSQ'``, ``'Kubik'``
+        Fitting method, a key of ``model_register``: ``'LSQ'``, ``'Kubik'``
         or ``'Brandt'``. Default is ``'LSQ'``.
     persistence : bool, optional
         Whether to account for persistence in the fit. Unused. Default is
@@ -41,7 +41,7 @@ def fit_ramp(rawramp,  method='LSQ',
         Whether to account for count-rate non-linearity in the fit. Unused.
         Default is False.
     raw_ramp_kwargs : dict, optional
-        Passed to `RawRamp.preprocess_ramp`. Default is ``{}``.
+        Passed to `~mercupix.ramp.RawRamp.preprocess_ramp`. Default is ``{}``.
     fit_args : dict, optional
         Passed to the ``fit`` method of the fitter. Default is ``{}``.
     **kwargs
@@ -99,7 +99,7 @@ class Fitter():
         rawramp : mercupix.ramp.RawRamp
             Raw ramp to fit.
         ramp_kwargs : dict, optional
-            Passed to `RawRamp.preprocess_ramp`. Default is ``{}``.
+            Passed to `~mercupix.ramp.RawRamp.preprocess_ramp`. Default is ``{}``.
         **kwargs
             Passed to the constructor of ``cls``.
 
@@ -136,7 +136,7 @@ class Fitter():
         Parameters
         ----------
         data : ndarray, optional
-            Datacube of shape ``(ngroups, ny, nx)``. If None, `data` is
+            Datacube of shape ``(ngroups, ny, nx)``. If None, ``data`` is
             used. Default is None.
         pixels : tuple of int, optional
             Indices ``(i, j)`` along the two spatial axes. If None, the
@@ -172,7 +172,7 @@ class Fitter():
         Parameters
         ----------
         data : ndarray, optional
-            Datacube to fit. If None, `data` is used. Default is None.
+            Datacube to fit. If None, ``data`` is used. Default is None.
         inplace : bool, optional
             Whether to store the result in the instance. Default is False.
 
@@ -304,7 +304,7 @@ class LSQFit(Fitter):
         Parameters
         ----------
         data : ndarray, optional
-            Datacube to fit. If None, `data` is used. Default is None.
+            Datacube to fit. If None, ``data`` is used. Default is None.
         inplace : bool, optional
             Whether to store the coefficients in `polynome_coefs`. Default
             is False.
@@ -330,7 +330,7 @@ class LSQFit(Fitter):
         Parameters
         ----------
         data : ndarray, optional
-            Datacube to fit. If None, `data` is used. Default is None.
+            Datacube to fit. If None, ``data`` is used. Default is None.
         inplace : bool, optional
             Whether to store the coefficients in `polynome_coefs`. Default
             is False.
@@ -357,9 +357,9 @@ class LSQFit(Fitter):
         Parameters
         ----------
         data : ndarray, optional
-            Datacube to fit. If None, `data` is used. Default is None.
+            Datacube to fit. If None, ``data`` is used. Default is None.
         progress_bar : bool, optional
-            Whether to display a progress bar (requires `tqdm`). Default is
+            Whether to display a progress bar (requires ``tqdm``). Default is
             False.
         frame_range : list of int, optional
             ``[first, last]`` numbers of groups to scan. Default is
@@ -693,9 +693,9 @@ class Brandt2024(Fitter):
 
     The count rate is estimated from the group (resultant) differences by
     a generalized least-squares fit that accounts for read and photon
-    noise, using the tridiagonal structure of their covariance matrix.
+    noise, using the tridiagonal structure of their covariance matrix [1]_.
     Jumps (cosmic rays) can be detected by iteratively omitting one or two
-    consecutive differences.
+    consecutive differences [2]_.
 
     Parameters
     ----------
@@ -827,7 +827,7 @@ class Brandt2024(Fitter):
             Mask of valid differences, used to compute the count rate
             guess. Default is None.
         countrateguess : ndarray, optional
-            Count rate guess. If None, `countrateguess` or
+            Count rate guess. If None, ``countrateguess`` or
             `get_countrateguess` is used. Default is None.
 
         Returns
@@ -838,7 +838,7 @@ class Brandt2024(Fitter):
             Off-diagonal of the covariance matrix.
         scale : float or ndarray
             Factor by which ``alpha`` and ``beta`` were divided. 1 if
-            `rescale` is False.
+            ``rescale`` is False.
         """
 
         if countrateguess is None :
@@ -866,7 +866,7 @@ class Brandt2024(Fitter):
         ----------
         diffd : ndarray, optional
             Differences divided by the time between resultants. If None,
-            `diffd` is used. Default is None.
+            ``diffd`` is used. Default is None.
         mask : ndarray, optional
             Mask of valid differences, multiplied with ``diffd``. Default is
             None.
@@ -875,7 +875,7 @@ class Brandt2024(Fitter):
         -------
         ndarray
             Count rate guess of shape ``(npix,)``. The first difference is
-            ignored if `reset` is True.
+            ignored if ``reset`` is True.
         """
         if diffd is None : 
             diffd = self.diffd 
@@ -1043,7 +1043,7 @@ class Brandt2024(Fitter):
         Raises
         ------
         ValueError
-            If ``jumps`` and `reset` are both True.
+            If ``jumps`` and ``reset`` are both True.
         """
         
         ndrops = 1 
@@ -1101,12 +1101,12 @@ class Brandt2024(Fitter):
         ----------
         diffd : ndarray, optional
             Differences divided by the time between resultants. If None,
-            `diffd` is used. Default is None.
+            ``diffd`` is used. Default is None.
         diffmask : ndarray, optional
             Mask of valid differences. If None, all differences are valid.
             Default is None.
         countrateguess : ndarray, optional
-            Count rate guess. If None, `countrateguess` is used. Default is
+            Count rate guess. If None, ``countrateguess`` is used. Default is
             None.
         jumps : bool, optional
             Whether to detect jumps. Default is False.

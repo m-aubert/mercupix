@@ -165,7 +165,7 @@ class Exposure:
         Parameters
         ----------
         data : ndarray, optional
-            Image to display. If None, `data` is used. Default is None.
+            Image to display. If None, ``data`` is used. Default is None.
         fig : matplotlib.figure.Figure, optional
             Figure in which a new axes is created if ``ax`` is None.
             Default is None.
@@ -229,7 +229,7 @@ class MetaFrame(Exposure):
 
         Notes
         -----
-        Currently returns `mask` unchanged. Collapsing a 3D mask to 2D is
+        Currently returns ``mask`` unchanged. Collapsing a 3D mask to 2D is
         still to be decided.
         """
         mask = self.mask

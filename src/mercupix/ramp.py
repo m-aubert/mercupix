@@ -7,12 +7,12 @@ class RawRamp(BaseRamp):
     """Raw ramp with the corrections applied before ramp fitting.
 
     Provides reference pixel, offset, dark, non-linearity and IPC
-    corrections, as well as data quality masking. See `BaseRamp` for the
+    corrections, as well as data quality masking. See `~mercupix.baseramp.BaseRamp` for the
     constructor parameters.
 
     See Also
     --------
-    BaseRamp
+    mercupix.baseramp.BaseRamp
     """
 
     def _from_header_to_metadata(header): 
@@ -47,7 +47,7 @@ class RawRamp(BaseRamp):
         ----------
         data : ndarray, optional
             Datacube of shape ``(ngroups, ny, nx)`` to correct. If None,
-            `data` is used. Default is None.
+            ``data`` is used. Default is None.
         **kwargs
             Passed to `get_refpix_map`.
 
@@ -59,7 +59,7 @@ class RawRamp(BaseRamp):
 
         See Also
         --------
-        BaseRamp.get_refpix_map
+        mercupix.baseramp.BaseRamp.get_refpix_map
         """
         if data is None : 
             return  self.data[:, self.actslice, self.actslice] - self.get_refpix_map(**kwargs)
@@ -154,7 +154,7 @@ class RawRamp(BaseRamp):
                  cr_threshold_mad=9): 
         """Build the data quality bitmask of the ramp.
 
-        Flag values are defined in `mercupix.mask._BITFLAGS_DICT`.
+        Flag values are defined in ``mercupix.mask._BITFLAGS_DICT``.
 
         Parameters
         ----------
@@ -402,7 +402,7 @@ class RawRamp(BaseRamp):
         Parameters
         ----------
         data : ndarray, optional
-            Datacube to process. If None, `data` is used. Default is None.
+            Datacube to process. If None, ``data`` is used. Default is None.
         corr_refpix : bool, optional
             Whether to apply the reference pixel correction. Default is True.
         corr_ipc : bool, optional

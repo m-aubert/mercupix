@@ -33,6 +33,15 @@ dependencies = [
     "astropy",
   ]
 
+[project.optional-dependencies]
+docs = [
+    "myst-nb",
+    "sphinx>=7.2",
+    "sphinx-book-theme",
+    "sphinx-copybutton",
+    "sphinx-design",
+  ]
+
 [project.urls]
 Source = "https://github.com/m-aubert/mercupix"
 

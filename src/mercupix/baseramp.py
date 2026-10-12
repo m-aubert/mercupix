@@ -52,7 +52,7 @@ class BaseRamp( ):
         ----------
         data : ndarray, optional
             Datacube of shape ``(ngroups, ny, nx)`` from which the reference
-            pixels are read. If None, `data` is used. Default is None.
+            pixels are read. If None, ``data`` is used. Default is None.
         active_shape : bool, optional
             Whether to crop the correction to the active area of the
             detector. Default is True.
@@ -186,7 +186,7 @@ class BaseRamp( ):
 
         Returns
         -------
-        BaseRamp
+        mercupix.baseramp.BaseRamp
             Instance of ``cls`` holding the loaded ramp.
 
         See Also
@@ -231,7 +231,7 @@ class BaseRamp( ):
         Parameters
         ----------
         frame : ndarray, optional
-            2D frame to display. If None, the frame is taken from `data`.
+            2D frame to display. If None, the frame is taken from ``data``.
             Default is None.
         frame_num : int, optional
             Index of the group to display when ``frame`` is None.
@@ -272,7 +272,7 @@ class BaseRamp( ):
         ----------
         pixramp : ndarray, optional
             Pixel ramp(s) to display, of shape ``(ngroups, ...)``. If None,
-            the ramps are taken from `data`. Default is None.
+            the ramps are taken from ``data``. Default is None.
         pixel_ids : list, optional
             Indices ``[i, j]`` along the two spatial axes of the pixels to
             display. Each index can be an int, a slice or a list.
