@@ -21,9 +21,9 @@ classifiers = [
 ]
 dependencies = [
     # basics
-    "numpy",
+    "numpy>=2.0",
     "h5py",
-    "scipy",
+    "scipy>=1.15",
     "matplotlib",
     # Data Science
     "scikit-image",
