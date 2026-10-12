@@ -50,7 +50,7 @@ def get_charge_migration(mask, kernel=None):
     
     if kernel is None : 
         kernel = generate_binary_structure(2, 2)    
-    new_mask = binary_dilation(mask, kernel)
+    new_mask = binary_dilation(mask, kernel, axes=(1,2))
     new_mask[mask.astype(bool)] = False
     
     mask[new_mask.astype(bool)] = _BITFLAGS_DICT['CM']

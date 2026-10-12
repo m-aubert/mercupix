@@ -36,7 +36,7 @@ def fluxmap_to_scimg(data, error, mask, **meta):
 class Exposure: 
     """ Low-level class defining exposure (2D image extracted from Ramp).
     """
-    def __init__(self, data=None, mask=None, variance=None,  metadata=None): 
+    def __init__(self, data=None, mask=None, var=None,  metadata=None): 
         """
         Exposure class
 
@@ -54,6 +54,7 @@ class Exposure:
         self.data = data
         self.mask = mask
         self.metadata = metadata
+        self.var= var
         
     @classmethod
     def from_filename(cls,filename):
@@ -68,7 +69,7 @@ class Exposure:
         # Add some metadata processing with header or something else.
         #
         
-        return cls(data=image, mask=dq, variance=var, metadata={})
+        return cls(data=image, mask=dq, var=var, metadata={})
     
     
     @classmethod
@@ -154,7 +155,7 @@ class MetaFrame(Exposure):
         ndarray
             The flat-fielded image.
         """
-        from io import get_flatfield
+        from .io import get_flatfield
         
         flat = get_flatfield(self.metadata)
         
@@ -191,7 +192,7 @@ class MultiRampExposure:
         return cls(images=list_of_images, dq=dq, var=var)
 
     @classmethod
-    def from_images(list_of_images):
+    def from_images(cls,list_of_images):
         return cls(images=list_of_images)
         
     def stack_images():

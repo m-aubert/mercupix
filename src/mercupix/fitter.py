@@ -63,6 +63,8 @@ class Fitter():
         self._mask = mask
         if times is None:
             self._times = np.arange(data.shape[0])
+        else : 
+            self._times = times
                 
     @classmethod
     def from_rawramp(cls, rawramp, ramp_kwargs=dict(), **kwargs):
@@ -461,8 +463,6 @@ class Brandt2024(Fitter):
             countrateguess = self.get_countrateguess(mask=mask) if self.countrateguess is None else self.countrateguess 
     
         alpha, beta = self._get_covar(countrateguess)
-        alpha = alpha
-        beta = beta
         
         if self.rescale : 
             scale = alpha[0] 
@@ -486,7 +486,7 @@ class Brandt2024(Fitter):
             
         return countrateguess   
                 
-    def fit(self, inplace=True, jumps=False, jump_threshold=False): 
+    def fit(self, inplace=True, jumps=False, jump_threshold=[20,30]): 
         
         result = self.get_slope(jumps=jumps, jump_threshold=jump_threshold)
         
@@ -617,8 +617,7 @@ class Brandt2024(Fitter):
 
         alpha, beta, scale = self.get_alpha_beta_scale(countrateguess=countrateguess) 
         
-        if diffmask is None : 
-            beta *=  diffmask[1:]*diffmask[:-1]
+        beta *=  diffmask[1:]*diffmask[:-1]
         
         theta = self._get_theta(alpha, beta)
         phi = self._get_phi(alpha,beta)
@@ -871,7 +870,7 @@ class Kubik2015(Fitter):
         """
         alpha_ = self.alpha
         beta_ =  2*sigma_r**2 / (1+self.alpha)
-        g_ = self.estim_f(fe, sigma_r)
+        g_ = self.estim_f(sigma_r)
         term  = 2*(g_+beta_)**2 /  ((self.ng-1)*
                                     (1+2*fe/(1+alpha_) * 
                                      (g_+beta_)))
@@ -888,7 +887,7 @@ class Kubik2015(Fitter):
             tuple of ndarray : slope and variance of the considered ramp.
         """        
         slope = self.estim_f(sigma_r=readnoise)
-        err = self.estim_sigf(sigma_r=readnoise, fe=fe)
+        err = self.estim_sigf(readnoise, fe)
         
         self.result = RampFitResults(slope=slope, var=err)
         
@@ -899,7 +898,7 @@ class Kubik2015(Fitter):
             coefs = self.result.slope 
 
         # Simple A*t model               
-        model = coefs*self.ti[:,None,None] 
+        model = coefs*self.times[:,None,None] 
 
         if pixels : 
             xpixel , ypixel = pixels

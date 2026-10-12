@@ -111,7 +111,7 @@ class RawRamp(BaseRamp):
             data = self.correct_refpix()        
             
         if darkdata is None:
-            darkdata = 0
+            darkdata = np.atleast_1d(0)
             
         elif bool(metadata): 
             from .io import get_dark
