@@ -1,50 +1,66 @@
+"""Processing of raw up-the-ramp data prior to ramp fitting."""
 import numpy as np
 import skimage as ski
 from .baseramp import BaseRamp
   
 class RawRamp(BaseRamp):   
+    """Raw ramp with the corrections applied before ramp fitting.
+
+    Provides reference pixel, offset, dark, non-linearity and IPC
+    corrections, as well as data quality masking. See `BaseRamp` for the
+    constructor parameters.
+
+    See Also
+    --------
+    BaseRamp
     """
-    Ramp class that process Raw data.
-    """    
 
     def _from_header_to_metadata(header): 
-        """
-        To be filled function. 
-        Processes data header to extract metadata.
-        
+        """Extract the processing metadata from a file header.
+
         Parameters
         ----------
-        header : fits.Header object.
-        
+        header : astropy.io.fits.Header
+            Header of the raw data file.
+
         Returns
         -------
-        
-        dict 
-            Dict-like object with stored metadata.
-            Path to reference files: 
-                e.g : caracterisation files and external data needed for processing
+        dict
+            Metadata, including the paths to the reference files needed for
+            the processing (e.g. characterization files and external data).
+
+        Notes
+        -----
+        Not implemented yet: currently returns None.
         """
         pass 
 
     @property
     def metadata(self): 
+        """Metadata of the ramp. Currently always None."""
         return None
         
     def correct_refpix(self, data=None, **kwargs):
-        """Apply reference pixel correction
+        """Apply the reference pixel correction.
 
         Parameters
         ----------
         data : ndarray, optional
-            Datacube to correct. 
-            If None, uses the stored datacube passed at initialization, by default None.
-            
+            Datacube of shape ``(ngroups, ny, nx)`` to correct. If None,
+            `data` is used. Default is None.
+        **kwargs
+            Passed to `get_refpix_map`.
+
         Returns
         -------
         ndarray
-            Reference pixel subtracted datacube of shape (N, Nactpix, Nactpix),
-            where Nactpix is the total number of pixels in the cube subtracted from the reference pixels.
-        """        
+            Reference pixel subtracted datacube. Its shape is
+            ``(ngroups, ny_act, nx_act)`` when ``data`` is None.
+
+        See Also
+        --------
+        BaseRamp.get_refpix_map
+        """
         if data is None : 
             return  self.data[:, self.actslice, self.actslice] - self.get_refpix_map(**kwargs)
         else : 
@@ -54,24 +70,26 @@ class RawRamp(BaseRamp):
                         data=None, 
                         metadata={},
                         offset=0):
-        """Subtract an offset [or metadark] frame or cube to data. 
+        """Subtract an offset (bias or superbias) frame or cube.
 
         Parameters
         ----------
         data : ndarray, optional
-            Data to which correction is applied, by default None.
-            If None, use the output from reference pixel correction.
+            Datacube to correct. If None, the output of `correct_refpix` is
+            used. Default is None.
         metadata : dict, optional
-            Metadata storing external data, here dark, by default {}
-        offset : ndarray, optional
-            offset or bias to subtract, by default 0
-            If None and metadata is empty, the first frame of the datacube will automatically be subtracted.
+            Metadata with the path to the external dark under the ``'dark'``
+            key. Default is ``{}``.
+        offset : float or ndarray or None, optional
+            Offset to subtract. If None, it is loaded from ``metadata``, or
+            set to the first group of ``data`` if ``metadata`` is empty.
+            Default is 0.
 
         Returns
         -------
         ndarray
-            The offset subtracted data.
-        """        
+            Offset subtracted datacube.
+        """
         if data is None : 
             data = self.correct_refpix()
 
@@ -88,24 +106,26 @@ class RawRamp(BaseRamp):
                      data=None, 
                      metadata={}, 
                      darkdata=None):
-        """Subtract dark. 
+        """Subtract the dark current.
 
         Parameters
         ----------
         data : ndarray, optional
-            Data to which correction is applied, by default None.
-            If None, use the output from reference pixel correction.
+            Datacube to correct. If None, the output of `correct_refpix` is
+            used. Default is None.
         metadata : dict, optional
-            Metadata storing external data information by default {}
+            Metadata with the path to the external dark under the ``'dark'``
+            key. Default is ``{}``.
         darkdata : ndarray, optional
-            Dark frame or cube to use for correction. 
-            If 2D, it is computed using the ramp readout times `darkdata*self.times`.
+            Dark to subtract. If 2D, it is a dark rate multiplied by `times`
+            before subtraction. If 3D, it is a dark cube subtracted as is.
+            Default is None.
 
         Returns
         -------
         ndarray
-            The offset subtracted data.
-        """       
+            Dark subtracted datacube.
+        """
         
         if data is None : 
             data = self.correct_refpix()        
@@ -132,34 +152,53 @@ class RawRamp(BaseRamp):
                  sat_threshold=1.,
                  inpaint=False,
                  cr_threshold_mad=9): 
-        """Create a DQ bitmask map of the ramp
+        """Build the data quality bitmask of the ramp.
+
+        Flag values are defined in `mercupix.mask._BITFLAGS_DICT`.
 
         Parameters
         ----------
+        data : ndarray, optional
+            Processed datacube of shape ``(ngroups, ny_act, nx_act)`` used
+            for the jump detection. Default is None.
         disconnected : bool, optional
-            Flag disconnected or dead pixels, by default True
+            Whether to flag disconnected (dead) pixels. Default is True.
         cosmics : bool, optional
-            Flag jumps in ramp (cosmics), by default False
+            Whether to flag jumps (cosmic rays) in the ramp. Default is
+            False.
         saturated : bool, optional
-            Flag saturated pixels, by default False
+            Whether to flag saturated pixels. Default is False.
         hot : bool, optional
-            Flag high dark pixels, by default False
+            Whether to flag hot and warm pixels. Default is False.
         charge_migration : bool, optional
-            Flag charge_migration from detected jumps, by default False.
+            Whether to flag the neighbors of saturated pixels as charge
+            migration candidates. Requires ``saturated=True``. Default is
+            False.
         sat_threshold : float, optional
-            Saturation threshold value, by default 1.
-            If 1 saturation is the digital saturation : 65535 ADU.
+            Saturation threshold as a fraction of the digital saturation
+            (65535 ADU). Default is 1.
         inpaint : bool, optional
-            Whether to correct jumps detected in the rampdata, by default False.
-            If true, recomputes the ramp from the flagged groupe difference.
+            Whether to correct the jumps detected in ``data``. If True, the
+            ramp is rebuilt from the corrected group differences. Default is
+            False.
         cr_threshold_mad : float, optional
-            Jump detection threshold in number of $\sigma$, by default 9.
-            
+            Jump detection threshold, in units of the normalized median
+            absolute deviation. Default is 9.
+
         Returns
         -------
-        ndarray
-            A shape (N, Nactpix, Nactpix) bitmask.
-        """        
+        mask : ndarray
+            Bitmask of shape ``(ny_act, nx_act)``, or
+            ``(ngroups, ny_act, nx_act)`` if a per-group flag is computed.
+        data : ndarray
+            Input datacube, with the jumps corrected if ``inpaint`` and
+            ``cosmics`` are True.
+
+        See Also
+        --------
+        mercupix.mask.get_cosmics
+        mercupix.mask.get_saturated
+        """
         # Initialize mask
         from .mask import _MASK_DTYPE
 
@@ -205,27 +244,42 @@ class RawRamp(BaseRamp):
                           nl=False, 
                           metadata={}, 
                           ipckernel=np.ones((1,5,5)), dtype='float32'):
-        """Deconvolve a given IPC-kernel frame per frame.
+        """Deconvolve the IPC kernel, frame by frame.
+
+        The deconvolution uses 5 iterations of the Richardson-Lucy
+        algorithm on zero-padded frames.
 
         Parameters
         ----------
-        data : (ndarray, optional), optional
-            Array to which correction is applied, by default None.
+        data : ndarray, optional
+            Datacube of shape ``(ngroups, ny, nx)`` to correct. Default is
+            None.
         nl : bool, optional
-            If True, also consider non-linear IPC correction., by default False
+            Whether to also apply the non-linear IPC correction. Only used
+            when the kernel is loaded from ``metadata``. Default is False.
         metadata : dict, optional
-            Metadata to consider for loading ipc_kernel, by default empty dictionnary.
-        ipckernel : ndarray, optional
-            Kernel to convolve to correct IPC 
-            
+            Metadata with the path to the IPC coefficients under the
+            ``'ipc'`` key. Default is ``{}``.
+        ipckernel : ndarray or None, optional
+            IPC kernel to deconvolve, of shape ``(1, k, k)``. If None, it is
+            loaded from ``metadata``. Default is ``np.ones((1, 5, 5))``.
+        dtype : str, optional
+            Unused. Default is ``'float32'``.
+
         Returns
         -------
-            ndarray : corrected data cube (N,pix,pix)
-            
+        ndarray
+            IPC corrected datacube of shape ``(ngroups, ny, nx)``, as
+            float32.
+
+        See Also
+        --------
+        skimage.restoration.richardson_lucy
+
         Notes
         -----
-        
-        For now, bottleneck number one of the pipeline. Longer with increasing number of groups.
+        This is currently the main bottleneck of the pipeline; its cost
+        increases with the number of groups.
         """
         
         if ipckernel is None : 
@@ -251,20 +305,31 @@ class RawRamp(BaseRamp):
     def correct_nl(self, data=None, 
                          metadata={},
                          nl_coefficients=None):
-        """Correct classical NL estimated from the Canipe et al 2017 method.
+        """Correct the classical non-linearity.
+
+        The linearized data are ``data * (1 + sum_i c_i * data**i)``, with
+        coefficients ``c_i`` estimated following Canipe et al. (2017).
 
         Parameters
         ----------
-        data : (ndarray, optionnal), optional
-            Array to which correction is applied, by default None.
+        data : ndarray, optional
+            Datacube to correct. Default is None.
         metadata : dict, optional
-            Metadata to consider for loading corrections coefficients, by default empty dictionnary.
-        nl_coefficients : list, optional
-            Coefficients to apply in correction, in increasing polynomial order.
-            
+            Metadata with the path to the coefficients under the ``'nl'``
+            key. Default is ``{}``.
+        nl_coefficients : array_like, optional
+            Correction coefficients, in increasing polynomial order. Each
+            coefficient is a scalar or a per-pixel map. If None, they are
+            loaded from ``metadata``. Default is None.
+
         Returns
         -------
-            ndarray : Linearized data cube (N, Npix, Npix).
+        ndarray
+            Linearized datacube, as float32.
+
+        See Also
+        --------
+        mercupix.carac.ClassicalNL.get_nlcorr
         """
         
         if nl_coefficients is None : 
@@ -280,17 +345,26 @@ class RawRamp(BaseRamp):
         
     
     def get_variance(self,data=None):  
-        """Estimate variance in the datacube
+        """Estimate the per-pixel variance of the count rate.
+
+        The variance is computed over the group differences divided by the
+        time between groups.
 
         Parameters
         ----------
-        data : (ndarray, optionnal), optional
-            Datacube to consider.
+        data : ndarray, optional
+            Datacube of shape ``(ngroups, ny, nx)``. If None, 0 is returned.
+            Default is None.
 
         Returns
         -------
-            ndarray : Variance of the datacube, same shape as datacube. 
-                Think on how to do that tbh.
+        ndarray or int
+            Variance of the count rate, of shape ``(ny, nx)``.
+
+        Notes
+        -----
+        Whether a temporal or per-pixel variance is needed is still to be
+        decided.
         """
         
         #Clarifier ce qu'on veut. Variance temporelle ou variance par pixel ?
@@ -319,50 +393,61 @@ class RawRamp(BaseRamp):
                         ipckernel=np.ones((5,5)),
                         darkdata=None,
                         offset=0):
-        """General function that successively apply correction *prior* to fitting the ramp.
+        """Apply the corrections required before fitting the ramp.
+
+        The corrections are applied in the following order: reference
+        pixels, offset, non-linearity, IPC, dark, and finally masking and
+        jump correction.
 
         Parameters
         ----------
         data : ndarray, optional
-            data to process. If none, will use the loaded one, by default None
+            Datacube to process. If None, `data` is used. Default is None.
         corr_refpix : bool, optional
-            Apply reference pixel correction, by default True
+            Whether to apply the reference pixel correction. Default is True.
         corr_ipc : bool, optional
-            Apply ipc correction, by default False
+            Whether to apply the IPC correction. Default is False.
         corr_offset : bool, optional
-            Subtract bias or bias like data, by default False
-        corr_nl : bool, optional
-            Correct ramp for classical non-linearity, by default False
+            Whether to subtract the offset (bias). Default is False.
         corr_dark : bool, optional
-            Correct ramp for dark current, by default False.
+            Whether to subtract the dark current. Default is False.
+        corr_nl : bool, optional
+            Whether to correct the classical non-linearity. Default is False.
         corr_cosmics : bool, optional
-            Inpaint and correct (extrapolate) jump detected, by default False
+            Whether to correct (inpaint) the detected jumps. Default is
+            False.
         mask : bool, optional
-            If True, compute a (N, npix,npix) bitmask, by default False
+            Whether to compute the data quality bitmask. Default is False.
         comp_var : bool, optional
-            Compute and estimated frame per frame variance, by default False.
+            Whether to compute the variance. Default is False.
         mask_kwargs : dict, optional
-            Dictionnary of keyword arguments to pass to self.get_mask, see get_mask of kwargs, by default {}
+            Passed to `get_mask`. Default is ``{}``.
         metadata : dict, optional
-            Metadata dictionnary with paths to external files, should be loaded with io.fetch_metadata, by default {}
+            Metadata with the paths to the external files, as returned by
+            `mercupix.io.fetch_metadata`. Default is ``{}``.
+        nl_coefficients : array_like, optional
+            Non-linearity coefficients, used if ``corr_nl=True``. See
+            `correct_nl`. Default is None.
         ipckernel : ndarray, optional
-            Provides kernel to use in IPC correction. Only used if `corr_ipc=True`, by default `np.ones((5,5))`
-        darkdata : ndarray, optionnal
-            2D dark exposure or up-the-ramp dark to subtract to the ramp data if `corr_dark=True`. 
-            If 2d, it is multiplied by the group readout times prior to subtraction, by default None.
-        offset : ndarray or float, optionnal
-            Offset bias to subtract to the ramp data if `corr_offset=True`, by default 0.
+            IPC kernel, used if ``corr_ipc=True``. Default is
+            ``np.ones((5, 5))``.
+        darkdata : ndarray, optional
+            Dark rate (2D) or dark cube (3D), used if ``corr_dark=True``. A
+            2D dark is multiplied by `times` before subtraction. Default is
+            None.
+        offset : float or ndarray, optional
+            Offset to subtract, used if ``corr_offset=True``. Default is 0.
 
         Returns
         -------
         datacube : ndarray
-            Processed and corrected datacube of shape (N, Npix, Npix)
-        varcube : ndarray
-            Variance of datacube, shape (N, Npix, Npix)
+            Processed datacube of shape ``(ngroups, ny_act, nx_act)``.
+        varcube : ndarray or int
+            Variance from `get_variance`, or 0 if ``comp_var`` is False.
         mask : ndarray
-            Bitmask of datacube.shape (N,Npix,Npix) if mask is True. 
-            If mask is False, bitmask is 0 everywhere.
-        """     
+            Data quality bitmask from `get_mask`. If ``mask`` is False,
+            an array of zeros with the shape of ``datacube``.
+        """
         if corr_refpix : 
             data = self.correct_refpix(data=data)
 

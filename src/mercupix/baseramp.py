@@ -1,40 +1,40 @@
+"""Base class to store and access an up-the-ramp HxRG datacube."""
 
 import numpy as np
 from .refpixels import get_refpix_ud, get_refpix_lr
 
 class BaseRamp( ): 
-    """
-    General function to define a ramp.
-    Will probably be declined depending what kind of data it is : 
-    (e.g flat, dark etc)
-    
+    """Generic up-the-ramp datacube with reference pixels.
+
+    Subclasses specialize the processing depending on the kind of data
+    (e.g. raw science, flat, dark).
+
+    Parameters
+    ----------
+    data : ndarray
+        Ramp datacube of shape ``(ngroups, ny, nx)``, including the
+        reference pixels.
+    times : ndarray
+        Time stamp of each group, of shape ``(ngroups,)``. A group can
+        contain a single frame.
+    tgroup : float or ndarray, optional
+        Time of a group, which may vary. If None, the datacube is expected
+        to have no dropped frames. Default is None.
+    tframe : float, optional
+        Time of a single frame. Default is None.
+    nrefpixels : int, optional
+        Width, in pixels, of the reference pixel border around the active
+        area. The frame is ``2 * nrefpixels`` larger than the active area
+        in each dimension. Default is 4.
+    nchannels : int, optional
+        Number of readout channels of the detector. Sets
+        `npix_per_channel`. Default is 32.
     """
     def __init__(self, data, times, 
                  tgroup=None, 
                  tframe=None,
                  nrefpixels=4,
                  nchannels=32):
-        """Ramp class to read and process a given ramp.
-
-        Parameters:
-        -----------
-        data: ndarray
-            data cube of the ramp (ngroups, *img_shape).
-        times: ndarray
-            time stamp of group of the data cube. 
-            (a group can have a single frame).
-        tgroup: array, float, None
-            time of a group. Could vary. 
-            If None, the data cube is expected to have no-drop and tgroup is derived 
-            by using np.diff on times.
-        nrefpixels: int
-            number of pixel around the active data cube that serve as reference pixels.
-            Hence, width and height are nrefpixels*2 larger for the data cube that 
-            for the active cube.
-        nchannels: int
-            number of channel in the detector. 
-            This automatically sets npix_per_channel.
-        """
         self._data = np.asarray(data)
         self._times = np.asarray(times)
         self._tgroup = tgroup
@@ -46,28 +46,29 @@ class BaseRamp( ):
         self._act_shape = np.asarray(self._frame_shape)-self._nrefpixels*2
         
     def get_refpix_map(self, data=None, active_shape=True, **kwargs):         
-        """Estimate reference pixel correction
+        """Estimate the reference pixel correction.
 
         Parameters
         ----------
         data : ndarray, optional
-            Data to consider when estimating the reference pixels, by default None
-
+            Datacube of shape ``(ngroups, ny, nx)`` from which the reference
+            pixels are read. If None, `data` is used. Default is None.
         active_shape : bool, optional
-            Remap the reference pixel map to the active-shape of the detector,
-            by default True
-        
-        **kwargs:
-            Keyword arguments passed to the left-right pixel correction
-        
-        See also
-        --------
-        `mercupix.refpixels.get_refpix_lr`
+            Whether to crop the correction to the active area of the
+            detector. Default is True.
+        **kwargs
+            Passed to `mercupix.refpixels.get_refpix_lr`.
 
         Returns
         -------
         ndarray
-            The reference pixel corrections of shape (N, Npix, Npix)
+            Reference pixel correction of shape
+            ``(ngroups, ny_act, nx_act)``.
+
+        See Also
+        --------
+        mercupix.refpixels.get_refpix_ud
+        mercupix.refpixels.get_refpix_lr
         """
         if data is None : 
             data = self.data
@@ -97,54 +98,57 @@ class BaseRamp( ):
       
     @property
     def data(self):
-        """ datacube to be fitted """
+        """Ramp datacube of shape ``(ngroups, ny, nx)``."""
         return self._data
 
     @property
     def times(self):
-        """ """
+        """Time stamp of each group, of shape ``(ngroups,)``."""
         return self._times
 
     @property
     def tgroup(self):
-        """ """
+        """Time of a group."""
         return self._tgroup
 
     @property
     def ngroups(self):
-        """ """
+        """Number of groups in the ramp."""
         return self._data.shape[0]
 
     @property
     def nchannels(self):
-        """ """
+        """Number of readout channels."""
         return self._nchannels
 
     @property
     def npix_per_channel(self):
-        """ """
+        """Number of pixel columns per readout channel."""
         return self.data.shape[2]//self.nchannels
         
     @property
     def nrefpixels(self):
-        """ """
+        """Width of the reference pixel border, in pixels."""
         return self._nrefpixels
     
     @property
     def active_shape(self):
+        """Shape ``(ny_act, nx_act)`` of the active area."""
         return self._act_shape
     
     @property
     def frame_shape(self):
+        """Shape ``(ny, nx)`` of a full frame."""
         return self._frame_shape
     
     @property
     def actslice(self):
-        """ """
+        """Slice selecting the active area along each spatial axis."""
         return self._actslice
     
     @property
     def cube_shape(self):
+        """Shape ``(ngroups, ny, nx)`` of the datacube."""
         return (self.ngroups, self.frame_shape[0], self.frame_shape[1])
         
     # ------- #
@@ -157,26 +161,40 @@ class BaseRamp( ):
                       nrefpixels=4,
                       nchannels=32,
                       **kwargs):
-        """Create Ramp from filename.
+        """Load a ramp from a file.
 
         Parameters
         ----------
         filename : str
-            Path to the file to process. Should be fits file or h5 file.
-            
-        datatype : str, optional
-            - 'pyxsim' for pyxim format data [fits]
-            - 'roman' for roman flight-like format data [fits]
-            - 'ip2i' for ip2i format data [hdf5]
-            - None for anyfits format data. times will be set to empty. 
-        
-        **kwargs : 
-            keyword arguments passed to from_ip2i.
-        
+            Path to the file to load (FITS or HDF5).
+        datatype : str or None, optional
+            Format of the file:
+
+            - ``'pyxim'``: pyxim simulation format (FITS),
+            - ``'roman'``: Roman flight-like format (FITS),
+            - ``'ip2i'``: IP2I test bench format (HDF5),
+            - None: any FITS file; `times` is left empty.
+
+            Default is ``'pyxim'``.
+        nrefpixels : int, optional
+            Width of the reference pixel border, in pixels. Default is 4.
+        nchannels : int, optional
+            Number of readout channels. Overridden by the value read from
+            the file when ``datatype`` is not None. Default is 32.
+        **kwargs
+            Passed to `mercupix.io.from_ip2i` when ``datatype='ip2i'``.
+
         Returns
         -------
-        cls
-            Ramp instance        
+        BaseRamp
+            Instance of ``cls`` holding the loaded ramp.
+
+        See Also
+        --------
+        mercupix.io.from_pyxim
+        mercupix.io.from_roman
+        mercupix.io.from_ip2i
+        mercupix.io.from_anyfits
         """
         if datatype == 'roman' : 
             from .io import from_roman 
@@ -208,23 +226,28 @@ class BaseRamp( ):
     # ==================== #  
         
     def show_frame(self, frame=None,  frame_num=0, corr_refpix=False, **kwargs):
-        """Utility function to display a single frame in a cube.
+        """Display a single frame of the datacube.
 
         Parameters
         ----------
         frame : ndarray, optional
-            A frame to display, by default None
+            2D frame to display. If None, the frame is taken from `data`.
+            Default is None.
         frame_num : int, optional
-            A frame index to select, by default 0.
+            Index of the group to display when ``frame`` is None.
+            Default is 0.
         corr_refpix : bool, optional
-             Whether to correct the reference pixel on selected frame, only if frame is None, by default False
+            Whether to apply the reference pixel correction to the selected
+            frame. Only used when ``frame`` is None. Default is False.
         **kwargs
-            Passed to utils.plot_frame
-            
+            Passed to `mercupix.utils.plot_frame`.
+
         Returns
         -------
-        plt.Figure, plt.Axes
-            Figure and Axes instance on which axes and plots where drawn.
+        fig : matplotlib.figure.Figure
+            Figure containing the plot.
+        ax : matplotlib.axes.Axes
+            Axes on which the frame is drawn.
         """
         from .utils import plot_frame
                 
@@ -243,25 +266,33 @@ class BaseRamp( ):
                            corr_refpix=False, 
                            x_time = True, 
                            **kwargs):
-        """Utility function to display pixel ramps in a cube.
+        """Display the ramp of one or several pixels.
 
         Parameters
         ----------
         pixramp : ndarray, optional
-            A ramp of pixel to display of shape (Ngroup,).
-            If None will consider a pixel ramp from the self.data instance, by default None
-        pixel_ids : list of ints, slices, lists, optional
-            Pixel indexes of the ramp, by default [0,0].
+            Pixel ramp(s) to display, of shape ``(ngroups, ...)``. If None,
+            the ramps are taken from `data`. Default is None.
+        pixel_ids : list, optional
+            Indices ``[i, j]`` along the two spatial axes of the pixels to
+            display. Each index can be an int, a slice or a list.
+            Default is ``[0, 0]``.
         corr_refpix : bool, optional
-             Whether to correct the reference pixel on selected frame, only if frame is None, by default False
+            Whether to apply the reference pixel correction to the selected
+            ramps. Only used when ``pixramp`` is None. Default is False.
+        x_time : bool, optional
+            Whether to use `times` as abscissa instead of the group index.
+            Default is True.
         **kwargs
-            Passed to utils.plot_ramp
-             
+            Passed to `mercupix.utils.plot_ramp`.
+
         Returns
         -------
-        plt.Figure, plt.Axes
-            Figure and Axes instance on which axes and plots where drawn.
-        """  
+        fig : matplotlib.figure.Figure
+            Figure containing the plot.
+        ax : matplotlib.axes.Axes
+            Axes on which the ramps are drawn.
+        """
         from .utils import plot_ramp 
         
         if pixramp is None :        

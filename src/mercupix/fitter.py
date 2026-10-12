@@ -1,3 +1,13 @@
+"""Ramp fitting methods and their results.
+
+Available fitters are registered in `model_register`:
+
+- ``'LSQ'``: `LSQFit`, polynomial least-squares fit,
+- ``'Kubik'``: `Kubik2015`, group-difference estimator,
+- ``'Brandt'``: `Brandt2024`, optimal fit with jump detection.
+
+All fitters return a `RampFitResults` instance.
+"""
 import numpy as np
 import warnings
 
@@ -9,36 +19,44 @@ def fit_ramp(rawramp,  method='LSQ',
                        raw_ramp_kwargs={},
                        fit_args={},
                        **kwargs): 
-    """
-    High-level function to fit ramp
+    """Fit a raw ramp with a given method.
+
+    The ramp is first preprocessed with `RawRamp.preprocess_ramp`, then
+    fitted with the fitter registered under ``method``.
 
     Parameters
     ----------
-    datacube : ndarray
-        (N, nact, nact) datacube
-    varcube : ndarray, optional
-        Variance cube of datacube (same shape), by default None
-    time_frames : ndarray-like, optional
-        time per frames, by default None
-    time_group : ndarray-like, optional
-        time per groups if datacube is grouped, by default None
+    rawramp : mercupix.ramp.RawRamp
+        Raw ramp to fit.
     method : str, optional
-        Fitting method. Implemented are 'LSQ', 'Kubik', 'Brandt', by default 'LSQ'
-    fit_args : dict, optional
-        keyword-arguments of the fitter method, by default {}
+        Fitting method, a key of `model_register`: ``'LSQ'``, ``'Kubik'``
+        or ``'Brandt'``. Default is ``'LSQ'``.
     persistence : bool, optional
-        Accounts for persistence effects in fit, by default False
+        Whether to account for persistence in the fit. Unused. Default is
+        False.
     bfe : bool, optional
-        Accounts for bright-fatter effect in fit, by default False
+        Whether to account for the brighter-fatter effect in the fit.
+        Unused. Default is False.
     crnl : bool, optional
-        Accounts for count-rate non-linearity, by default False
-    cosmics : bool, optional 
+        Whether to account for count-rate non-linearity in the fit. Unused.
+        Default is False.
+    raw_ramp_kwargs : dict, optional
+        Passed to `RawRamp.preprocess_ramp`. Default is ``{}``.
+    fit_args : dict, optional
+        Passed to the ``fit`` method of the fitter. Default is ``{}``.
+    **kwargs
+        Passed to the fitter constructor.
 
     Returns
     -------
-    array-like or tuple of ndarray-like
-        Output of the fitting procedure : fitted slope, variance and QF (chi2 or else).
-    """    
+    RampFitResults
+        Result of the fit.
+
+    Raises
+    ------
+    KeyError
+        If ``method`` is not a registered fitter.
+    """
     try : 
         fitter = model_register[method].from_rawramp(rawramp, 
                                                        ramp_kwargs=raw_ramp_kwargs,
@@ -54,11 +72,19 @@ def fit_ramp(rawramp,  method='LSQ',
 
 ## General Fitter level
 class Fitter(): 
-    """ 
-    Baseline Fitter Class for models.
+    """Base class of the ramp fitters.
+
+    Parameters
+    ----------
+    data : ndarray
+        Datacube of shape ``(ngroups, ny, nx)`` to fit.
+    mask : ndarray, optional
+        Data quality bitmask of ``data``. Default is None.
+    times : ndarray, optional
+        Time of each group, of shape ``(ngroups,)``. If None, the group
+        index is used. Default is None.
     """
     def __init__(self, data, mask=None, times=None):
-        """ """
         self._data = data
         self._mask = mask
         if times is None:
@@ -66,16 +92,66 @@ class Fitter():
                 
     @classmethod
     def from_rawramp(cls, rawramp, ramp_kwargs=dict(), **kwargs):
-        """ """
+        """Build a fitter from a preprocessed raw ramp.
+
+        Parameters
+        ----------
+        rawramp : mercupix.ramp.RawRamp
+            Raw ramp to fit.
+        ramp_kwargs : dict, optional
+            Passed to `RawRamp.preprocess_ramp`. Default is ``{}``.
+        **kwargs
+            Passed to the constructor of ``cls``.
+
+        Returns
+        -------
+        Fitter
+            Instance of ``cls`` holding the preprocessed datacube, the group
+            times and the bitmask.
+        """
         datacube, varcube, mask = rawramp.preprocess_ramp(**ramp_kwargs)
         return cls(data=datacube, times=rawramp.times, mask=mask, **kwargs)
         
     def get_model(self, pixels=None, coefs=None):
-        """ """
+        """Evaluate the ramp model.
+
+        Parameters
+        ----------
+        pixels : tuple of int, optional
+            Indices ``(i, j)`` along the two spatial axes. If None, the
+            model of all pixels is returned. Default is None.
+        coefs : ndarray, optional
+            Model coefficients. Default is None.
+
+        Returns
+        -------
+        ndarray or None
+            Ramp model. None in the base class.
+        """
         return None
         
     def get_residuals(self, data=None, pixels=None, coefs=None, model=None):
-        """ """
+        """Compute the residuals between the data and the ramp model.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            Datacube of shape ``(ngroups, ny, nx)``. If None, `data` is
+            used. Default is None.
+        pixels : tuple of int, optional
+            Indices ``(i, j)`` along the two spatial axes. If None, the
+            residuals of all pixels are returned. Default is None.
+        coefs : ndarray, optional
+            Model coefficients, passed to `get_model`. Default is None.
+        model : ndarray, optional
+            Ramp model. If None, it is computed with `get_model`. Default
+            is None.
+
+        Returns
+        -------
+        ndarray
+            Residuals ``data - model``.
+        """
         if model is None:
             model = self.get_model(pixels=pixels, coefs=coefs)
             
@@ -91,7 +167,20 @@ class Fitter():
         return residuals
     
     def fit(self, data=None, inplace=False):
-        """ """
+        """Fit the ramp.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            Datacube to fit. If None, `data` is used. Default is None.
+        inplace : bool, optional
+            Whether to store the result in the instance. Default is False.
+
+        Returns
+        -------
+        RampFitResults or None
+            Result of the fit. None in the base class.
+        """
         return None
 
     # ================ #
@@ -99,17 +188,17 @@ class Fitter():
     # ================ #    
     @property
     def data(self):
-        """ datacube to be fitted """
+        """Datacube to fit, of shape ``(ngroups, ny, nx)``."""
         return self._data
 
     @property
     def times(self):
-        """ """
+        """Time of each group, of shape ``(ngroups,)``."""
         return self._times
     
     @property
     def _cached_fitted_times(self):
-        """ """
+        """Times as used in the fit, cached on first access."""
         if not hasattr(self, "_hcached_fitted_times") or self._hcached_fitted_times is None:
             self._hcached_fitted_times = self.get_times()
             
@@ -117,10 +206,28 @@ class Fitter():
 
 
 class LSQFit(Fitter): 
-    """ Uses least-square methods to evaluate flux."""
+    """Polynomial least-squares ramp fitter.
+
+    Each pixel ramp is fitted with a polynomial of the group times. For
+    Legendre and Hermite polynomials, the times are rescaled to ``[-1, 1]``
+    with ``t = 0`` mapped to -1.
+
+    Parameters
+    ----------
+    data : ndarray
+        Datacube of shape ``(ngroups, ny, nx)`` to fit.
+    times : ndarray, optional
+        Time of each group, of shape ``(ngroups,)``. Default is None.
+    mask : ndarray, optional
+        Data quality bitmask of ``data``. Unused. Default is None.
+    degree : int, optional
+        Degree of the polynomial. Default is 5.
+    polytype : str, optional
+        Polynomial basis: ``'leg'``/``'legendre'``, ``'herm'``/``'hermite'``
+        or ``'mono'``/``'monomial'``. Default is ``'leg'``.
+    """
     def __init__(self, data, times=None, mask=None, #Adding mask for now. Will see later how to use it.
                  degree=5, polytype='leg'):
-        """ """        
         super().__init__(data, times=times)
 
         self.set_times(times)
@@ -133,7 +240,17 @@ class LSQFit(Fitter):
     # SETTER  # 
     # ------- #
     def set_polynome(self, degree, polytype="legendre", load=False):
-        """ """
+        """Set the polynomial basis and reset the stored fit.
+
+        Parameters
+        ----------
+        degree : int
+            Degree of the polynomial.
+        polytype : str, optional
+            Polynomial basis, see `LSQFit`. Default is ``'legendre'``.
+        load : bool, optional
+            Unused. Default is False.
+        """
         
         self._polynome = {"type": polytype, 
                           "degree": degree, 
@@ -143,7 +260,13 @@ class LSQFit(Fitter):
         self._hcached_fitted_times = None
         
     def set_times(self, times):
-        """ """
+        """Set the group times and reset the cached fitted times.
+
+        Parameters
+        ----------
+        times : array_like
+            Time of each group, of shape ``(ngroups,)``.
+        """
         self._times = np.asarray(times, dtype="float32")
         self._hcached_fitted_times = None
 
@@ -151,7 +274,22 @@ class LSQFit(Fitter):
     # GETTER  # 
     # ------- #
     def get_times(self, as_fitted=True, polytype=None):
-        """ """
+        """Get the group times.
+
+        Parameters
+        ----------
+        as_fitted : bool, optional
+            Whether to return the times rescaled for the polynomial basis.
+            Default is True.
+        polytype : str, optional
+            Polynomial basis used for the rescaling. If None,
+            `polynome_type` is used. Default is None.
+
+        Returns
+        -------
+        ndarray
+            Group times, rescaled if ``as_fitted`` is True.
+        """
         if not as_fitted:
             return self.times
 
@@ -161,7 +299,21 @@ class LSQFit(Fitter):
         return self._times_to_polynomex(times=self.times, polytype=polytype)
     
     def _fit(self, data=None, inplace=False):
-        """ """
+        """Fit the polynomial coefficients.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            Datacube to fit. If None, `data` is used. Default is None.
+        inplace : bool, optional
+            Whether to store the coefficients in `polynome_coefs`. Default
+            is False.
+
+        Returns
+        -------
+        ndarray
+            Coefficients of shape ``(degree + 1, ny, nx)``.
+        """
         if data is None:
             data = self.data
             
@@ -173,6 +325,22 @@ class LSQFit(Fitter):
         return coefs
 
     def fit(self, data=None, inplace=False):
+        """Fit the ramp.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            Datacube to fit. If None, `data` is used. Default is None.
+        inplace : bool, optional
+            Whether to store the coefficients in `polynome_coefs`. Default
+            is False.
+
+        Returns
+        -------
+        RampFitResults
+            Result with the ``slope``, ``offset`` and ``nl`` (higher order
+            coefficients), in ADU.
+        """
         coefs = self._fit(data=data, inplace=inplace)
         offset, slope, nl = self.parse_coefs(coefs=coefs,in_adu=True)
         
@@ -184,7 +352,33 @@ class LSQFit(Fitter):
     def scan_fit(self, data=None, progress_bar=False,
                      frame_range=[4, None],
                      x_range=None, y_range=None):
-        """ """
+        """Fit the ramp truncated at an increasing number of groups.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            Datacube to fit. If None, `data` is used. Default is None.
+        progress_bar : bool, optional
+            Whether to display a progress bar (requires `tqdm`). Default is
+            False.
+        frame_range : list of int, optional
+            ``[first, last]`` numbers of groups to scan. Default is
+            ``[4, None]``.
+        x_range : list of int, optional
+            ``[start, stop]`` of the columns to fit. Default is None.
+        y_range : list of int, optional
+            ``[start, stop]`` of the rows to fit. Default is None.
+
+        Returns
+        -------
+        xframes : ndarray
+            Number of groups of each fit.
+        times : ndarray
+            Time of the last group of each fit.
+        coefs : ndarray
+            Coefficients of each fit, of shape
+            ``(len(xframes), degree + 1, ny, nx)``.
+        """
         if progress_bar:
             from tqdm import tqdm
             
@@ -231,7 +425,23 @@ class LSQFit(Fitter):
         return xframes, np.asarray(times), np.asarray(coefs)
 
     def get_model(self, pixels=None, coefs=None):
-        """ """
+        """Evaluate the polynomial ramp model.
+
+        Parameters
+        ----------
+        pixels : tuple of int, optional
+            Indices ``(i, j)`` along the two spatial axes. If None, the
+            model of all pixels is returned. Default is None.
+        coefs : ndarray, optional
+            Coefficients of shape ``(degree + 1, ny, nx)``. If None,
+            `polynome_coefs` is used. Default is None.
+
+        Returns
+        -------
+        ndarray
+            Model of shape ``(ngroups, ny, nx)``, or ``(ngroups,)`` if
+            ``pixels`` is given.
+        """
         if coefs is None:
             coefs = self.polynome_coefs
 
@@ -244,7 +454,38 @@ class LSQFit(Fitter):
         return model
         
     def parse_coefs(self, coefs=None, times=None, axis=None, in_adu=False):
-        """ """
+        """Split the polynomial coefficients into offset, slope and higher orders.
+
+        Parameters
+        ----------
+        coefs : ndarray, optional
+            Polynomial coefficients. If None, `polynome_coefs` is used.
+            Default is None.
+        times : ndarray, optional
+            Group times used to convert the slope to ADU per time unit. If
+            None, `times` is used. Default is None.
+        axis : int, optional
+            Axis of ``coefs`` along the polynomial degree. If None, it is
+            the axis of length ``degree + 1``. Default is None.
+        in_adu : bool, optional
+            Whether to convert the Legendre or Hermite coefficients to an
+            offset in ADU and a slope in ADU per time unit. Default is False.
+
+        Returns
+        -------
+        offset : ndarray
+            Order 0 coefficient (offset).
+        slope : ndarray
+            Order 1 coefficient (slope).
+        nlinearities : ndarray
+            Coefficients of order 2 and higher.
+
+        Raises
+        ------
+        ValueError
+            If no coefficients are given nor stored, or if the degree axis
+            cannot be determined.
+        """
         if coefs is None:
             if self.polynome_coefs is None:
                 raise ValueError("no coefs given, none stored.")
@@ -294,7 +535,21 @@ class LSQFit(Fitter):
     # ------------- #
     @staticmethod
     def _times_to_polynomex(times, polytype):
-        """ """
+        """Rescale the times for the polynomial basis.
+
+        Parameters
+        ----------
+        times : ndarray
+            Group times.
+        polytype : str
+            Polynomial basis. Legendre and Hermite times are mapped from
+            ``[0, max(times)]`` to ``[-1, 1]``; other bases are unchanged.
+
+        Returns
+        -------
+        ndarray
+            Rescaled times.
+        """
         # careful, -1 must corresponds to t=0 so tmin=0, *not* np.min(times)
         if polytype in ["leg", "legendre", "herm", "hermite"]:
             tmin, tmax = 0, np.max(times)
@@ -304,7 +559,20 @@ class LSQFit(Fitter):
 
     @staticmethod
     def _fit_polynome_on_data(polynome, data):
-        """ """
+        """Solve the linear least-squares problem for all pixels.
+
+        Parameters
+        ----------
+        polynome : ndarray
+            Polynomial basis of shape ``(degree + 1, ngroups)``.
+        data : ndarray
+            Datacube of shape ``(ngroups, ...)``.
+
+        Returns
+        -------
+        ndarray
+            Coefficients of shape ``(degree + 1, ...)``.
+        """
         coefs = np.linalg.lstsq(polynome.T, 
                                 data.reshape(data.shape[0], -1), 
                                 rcond=None)[0]
@@ -313,7 +581,27 @@ class LSQFit(Fitter):
 
     @staticmethod
     def _get_polynome(degree, polytype, xnormed):
-        """ """
+        """Evaluate the polynomial basis.
+
+        Parameters
+        ----------
+        degree : int
+            Degree of the polynomial.
+        polytype : str
+            Polynomial basis, see `LSQFit`.
+        xnormed : ndarray
+            Rescaled times, of shape ``(ngroups,)``.
+
+        Returns
+        -------
+        ndarray
+            Basis of shape ``(degree + 1, ngroups)``, as float32.
+
+        Raises
+        ------
+        NotImplementedError
+            If ``polytype`` is unknown.
+        """
         if polytype in ["leg", "legendre"]: 
             from scipy.special import legendre
             pol = np.stack([legendre(i)(xnormed) for i in range(degree+1)])
@@ -332,7 +620,22 @@ class LSQFit(Fitter):
     
     @classmethod
     def _polynome_of_times(cls, times, degree, polytype):
-        """ """
+        """Evaluate the polynomial basis at the given times.
+
+        Parameters
+        ----------
+        times : ndarray
+            Group times.
+        degree : int
+            Degree of the polynomial.
+        polytype : str
+            Polynomial basis, see `LSQFit`.
+
+        Returns
+        -------
+        ndarray
+            Basis of shape ``(degree + 1, len(times))``, as float32.
+        """
         times = cls._times_to_polynomex(times, polytype=polytype)
         return cls._get_polynome(degree=degree,
                                  polytype=polytype,
@@ -343,17 +646,17 @@ class LSQFit(Fitter):
     # ================ #    
     @property
     def data(self):
-        """ datacube to be fitted """
+        """Datacube to fit, of shape ``(ngroups, ny, nx)``."""
         return self._data
 
     @property
     def times(self):
-        """ """
+        """Time of each group, of shape ``(ngroups,)``."""
         return self._times
 
     @property
     def _cached_fitted_times(self):
-        """ """
+        """Times as used in the fit, cached on first access."""
         if not hasattr(self, "_hcached_fitted_times") or self._hcached_fitted_times is None:
             self._hcached_fitted_times = self.get_times()
             
@@ -362,17 +665,17 @@ class LSQFit(Fitter):
     #  polynome
     @property
     def polynome_type(self):
-        """ kind of polynome """
+        """Polynomial basis."""
         return self._polynome.get("type")
 
     @property
     def polynome_degree(self):
-        """ kind of polynome """
+        """Degree of the polynomial."""
         return self._polynome.get("degree")    
 
     @property
     def polynome_basis(self):
-        """ kind of polynome """
+        """Polynomial basis evaluated at the fitted times, cached on first access."""
         if self._polynome.get("array", None) is None:
             self._polynome["array"] = self._get_polynome(degree=self.polynome_degree,
                                                          polytype=self.polynome_type,
@@ -381,13 +684,74 @@ class LSQFit(Fitter):
 
     @property
     def polynome_coefs(self):
-        """ """
+        """Stored polynomial coefficients, or None if not fitted in place."""
         return self._polynome.get("coefs", None)
   
 
 class Brandt2024(Fitter):    
-    """
-        Method to fit flux based on Brandt 2024. Assumes data are grouped.
+    """Optimal ramp fitter with jump detection (Brandt 2024).
+
+    The count rate is estimated from the group (resultant) differences by
+    a generalized least-squares fit that accounts for read and photon
+    noise, using the tridiagonal structure of their covariance matrix.
+    Jumps (cosmic rays) can be detected by iteratively omitting one or two
+    consecutive differences.
+
+    Parameters
+    ----------
+    data : ndarray
+        Datacube of resultants, of shape ``(ngroups, ny, nx)``.
+    times : ndarray
+        End time of each resultant, of shape ``(ngroups,)``.
+    mask : ndarray, optional
+        Data quality bitmask with the shape of ``data``. Differences
+        involving a flagged resultant are ignored. Default is None.
+    readnoise : float or ndarray, optional
+        Read noise of a single read, in ADU. Default is 11.
+    timeframe : float, optional
+        Unused. Default is None.
+    countrateguess : ndarray, optional
+        Initial count rate guess, used to build the covariance matrix. If
+        None, it is the mean of the differences. Default is None.
+    reset : bool, optional
+        Whether the first resultant is measured from the reset level, in
+        which case it is included as a difference with respect to 0.
+        Default is False.
+    nframes_list : list of int, optional
+        Number of frames averaged in each resultant. If empty, each
+        resultant is a single frame. Default is ``[]``.
+    rescale : bool, optional
+        Whether to rescale the covariance by its first diagonal element for
+        numerical stability. Default is True.
+
+    Attributes
+    ----------
+    ti : ndarray
+        Mean time of each resultant.
+    tauis : ndarray
+        Effective time of each resultant for the photon noise covariance.
+    vari : ndarray
+        Read noise variance of each resultant.
+    diffti : ndarray
+        Time between consecutive resultants.
+    diffd : ndarray
+        Differences of resultants divided by ``diffti``, of shape
+        ``(ndiff, npix)``.
+    diffmask : ndarray
+        1 for valid differences, 0 otherwise, with the shape of ``diffd``.
+    ndiff : int
+        Number of differences.
+    npix : tuple of int
+        Number of pixels, as a flattened shape.
+    sign : ndarray
+        Alternating signs ``(-1)**i`` of length ``ndiff``.
+
+    References
+    ----------
+    .. [1] Brandt, T. D. 2024, "Optimal Fitting and Debiasing for Detectors
+       Read Out Up-the-Ramp", PASP, 136, 045004.
+    .. [2] Brandt, T. D. 2024, "Likelihood-based Jump Detection and Cosmic
+       Ray Rejection for Detectors Read Out Up-the-Ramp", PASP, 136, 045005.
     """
     def __init__(self, data, times=None, mask=None, readnoise=11, timeframe=None,
                  countrateguess=None, reset=False, nframes_list = [], rescale=True):
@@ -455,6 +819,27 @@ class Brandt2024(Fitter):
 
     
     def get_alpha_beta_scale(self, mask=None, countrateguess=None):
+        """Get the diagonals of the difference covariance matrix.
+
+        Parameters
+        ----------
+        mask : ndarray, optional
+            Mask of valid differences, used to compute the count rate
+            guess. Default is None.
+        countrateguess : ndarray, optional
+            Count rate guess. If None, `countrateguess` or
+            `get_countrateguess` is used. Default is None.
+
+        Returns
+        -------
+        alpha : ndarray
+            Diagonal of the covariance matrix.
+        beta : ndarray
+            Off-diagonal of the covariance matrix.
+        scale : float or ndarray
+            Factor by which ``alpha`` and ``beta`` were divided. 1 if
+            `rescale` is False.
+        """
 
         if countrateguess is None :
             # Ugly one liner
@@ -475,6 +860,23 @@ class Brandt2024(Fitter):
         return alpha, beta, scale
                 
     def get_countrateguess(self, diffd=None, mask=None): 
+        """Estimate the count rate as the mean of the differences.
+
+        Parameters
+        ----------
+        diffd : ndarray, optional
+            Differences divided by the time between resultants. If None,
+            `diffd` is used. Default is None.
+        mask : ndarray, optional
+            Mask of valid differences, multiplied with ``diffd``. Default is
+            None.
+
+        Returns
+        -------
+        ndarray
+            Count rate guess of shape ``(npix,)``. The first difference is
+            ignored if `reset` is True.
+        """
         if diffd is None : 
             diffd = self.diffd 
         if mask is not None : 
@@ -487,6 +889,30 @@ class Brandt2024(Fitter):
         return countrateguess   
                 
     def fit(self, inplace=True, jumps=False, jump_threshold=False): 
+        """Fit the ramp.
+
+        Parameters
+        ----------
+        inplace : bool, optional
+            Whether to store the result in ``self.result``. Default is True.
+        jumps : bool, optional
+            Whether to detect and omit the jumps. Default is False.
+        jump_threshold : list of float, optional
+            Chi-square improvement thresholds to omit one or two
+            consecutive differences, required if ``jumps`` is True.
+            Default is False.
+
+        Returns
+        -------
+        RampFitResults
+            Result with the ``slope``, ``var``, ``qof`` (chi-square) and
+            ``mask2d`` (number of differences kept after jump detection),
+            reshaped to the frame shape.
+
+        See Also
+        --------
+        get_slope
+        """
         
         result = self.get_slope(jumps=jumps, jump_threshold=jump_threshold)
         
@@ -496,6 +922,27 @@ class Brandt2024(Fitter):
         return result
     
     def get_model(self, pixels=None, coefs=None, intercept=False, coefid=0):
+        """Evaluate the linear ramp model.
+
+        Parameters
+        ----------
+        pixels : tuple of int, optional
+            Indices ``(i, j)`` along the two spatial axes. If None, the
+            model of all pixels is returned. Default is None.
+        coefs : ndarray, optional
+            Slope, or ``(slope, offset)`` if ``intercept`` is True. If None,
+            the slope of the stored result is used. Default is None.
+        intercept : bool, optional
+            Whether ``coefs`` includes an offset. Default is False.
+        coefid : int, optional
+            Unused. Default is 0.
+
+        Returns
+        -------
+        ndarray
+            Model of shape ``(ngroups, ny, nx)``, or ``(ngroups,)`` if
+            ``pixels`` is given.
+        """
         # Here linear model
         if coefs is None : 
             coefs = self.result.slope
@@ -514,6 +961,21 @@ class Brandt2024(Fitter):
         return model
         
     def _get_covar(self, countrateguess) : 
+        """Compute the diagonals of the difference covariance matrix.
+
+        Parameters
+        ----------
+        countrateguess : float or ndarray
+            Count rate guess, setting the photon noise.
+
+        Returns
+        -------
+        alpha_diag : ndarray
+            Diagonal of the covariance matrix, of shape ``(ndiff, npix)``.
+        beta_diag : ndarray
+            Off-diagonal of the covariance matrix, of shape
+            ``(ndiff - 1, npix)``.
+        """
 
         ndim = countrateguess.ndim if hasattr(countrateguess , 'ndim') else 1
         expand_dims = list(range(1,ndim+1))
@@ -555,6 +1017,34 @@ class Brandt2024(Fitter):
                   intercept=False,
                   jump_threshold=[20,30], 
                   max_niter=5):
+        """Estimate the slope, optionally omitting the jumps.
+
+        When ``jumps`` is True, the jump detection is iterated until no new
+        jump is found or ``max_niter`` is reached. A final fit is then done
+        with the jumps masked.
+
+        Parameters
+        ----------
+        jumps : bool, optional
+            Whether to detect and omit the jumps. Default is False.
+        intercept : bool, optional
+            Whether to also fit an offset. Default is False.
+        jump_threshold : list of float, optional
+            Chi-square improvement thresholds to omit one or two
+            consecutive differences. Default is ``[20, 30]``.
+        max_niter : int, optional
+            Maximum number of jump detection iterations. Default is 5.
+
+        Returns
+        -------
+        RampFitResults
+            Result reshaped to the frame shape.
+
+        Raises
+        ------
+        ValueError
+            If ``jumps`` and `reset` are both True.
+        """
         
         ndrops = 1 
         slope = None
@@ -605,6 +1095,42 @@ class Brandt2024(Fitter):
         
     def _slope_iteration(self, diffd=None, diffmask=None, countrateguess=None, 
                         jumps=False, jump_threshold=[20, 30], intercept=False):
+        """Run a single slope estimation, optionally detecting jumps.
+
+        Parameters
+        ----------
+        diffd : ndarray, optional
+            Differences divided by the time between resultants. If None,
+            `diffd` is used. Default is None.
+        diffmask : ndarray, optional
+            Mask of valid differences. If None, all differences are valid.
+            Default is None.
+        countrateguess : ndarray, optional
+            Count rate guess. If None, `countrateguess` is used. Default is
+            None.
+        jumps : bool, optional
+            Whether to detect jumps. Default is False.
+        jump_threshold : list of float, optional
+            Chi-square improvement thresholds to omit one or two
+            consecutive differences. Default is ``[20, 30]``.
+        intercept : bool, optional
+            Whether to also fit an offset. Default is False.
+
+        Returns
+        -------
+        result : RampFitResults
+            Result with ``slope``, ``var`` and ``qof``.
+        newmask : ndarray or int
+            Mask of the differences kept after jump detection (1 if
+            ``jumps`` is False).
+        ndrops : int
+            Number of pixels with omitted differences.
+
+        Raises
+        ------
+        ValueError
+            If ``jumps`` and ``intercept`` are both True.
+        """
 
         if diffd is None : 
             diffd = self.diffd
@@ -669,6 +1195,49 @@ class Brandt2024(Fitter):
     def _jump_iteration(self, diffd, beta, theta, phi,
                         ThetaD, theta_term, A, B, C, dC, scale, 
                         totchi2, slope, jump_threshold=None):
+        """Find the best one or two consecutive differences to omit.
+
+        The chi-square of the fit omitting each single difference and each
+        pair of consecutive differences is computed. For each pixel, the
+        best omission is kept if its chi-square improvement exceeds the
+        corresponding threshold.
+
+        Parameters
+        ----------
+        diffd : ndarray
+            Masked differences divided by the time between resultants.
+        beta : ndarray
+            Off-diagonal of the covariance matrix.
+        theta, phi : ndarray
+            Forward and backward recursion terms, see `_get_theta` and
+            `_get_phi`.
+        ThetaD : ndarray
+            Data-weighted forward recursion term, see `_get_ThetaD`.
+        theta_term : ndarray
+            ``sign / theta[-1]``.
+        A, B, C : ndarray
+            Quadratic, linear and normalization terms of the chi-square.
+        dC : ndarray
+            Contribution of each difference to ``C``.
+        scale : float or ndarray
+            Covariance scaling factor.
+        totchi2 : ndarray
+            Chi-square of the fit without omission.
+        slope : ndarray
+            Slope of the fit without omission. Modified in place.
+        jump_threshold : list of float, optional
+            Chi-square improvement thresholds to omit one or two
+            consecutive differences. Default is None.
+
+        Returns
+        -------
+        slope : ndarray
+            Slope with the omissions applied.
+        droptot : ndarray
+            Boolean mask of the differences kept.
+        ndrops : int
+            Number of pixels with omitted differences.
+        """
          
         PhiD = self._get_PhiD(diffd, beta, phi)
     
@@ -729,6 +1298,34 @@ class Brandt2024(Fitter):
     
     def _get_slope_intercept(self, diffd, beta, theta, phi, Phi, Theta,
                         ThetaD, A, B, C, scale, ktc_prior=None):
+        """Estimate the slope and offset jointly.
+
+        Parameters
+        ----------
+        diffd : ndarray
+            Differences divided by the time between resultants.
+        beta : ndarray
+            Off-diagonal of the covariance matrix.
+        theta, phi : ndarray
+            Forward and backward recursion terms.
+        Phi, Theta : ndarray
+            Cumulative recursion terms, see `_get_Phi` and `_get_Theta`.
+        ThetaD : ndarray
+            Data-weighted forward recursion term.
+        A, B, C : ndarray
+            Quadratic, linear and normalization terms of the chi-square.
+        scale : float or ndarray
+            Covariance scaling factor.
+        ktc_prior : tuple of ndarray, optional
+            ``(value, error)`` of a Gaussian prior on the offset (kTC
+            noise). Default is None.
+
+        Returns
+        -------
+        RampFitResults
+            Result with ``slope``, ``offset``, ``var`` (covariance of slope
+            and offset) and ``qof``.
+        """
         if ktc_prior is not None :  
             z, zerr = ktc_prior
             z_term1 = z/zerr**2
@@ -764,18 +1361,90 @@ class Brandt2024(Fitter):
         return result 
     
     def _get_cov_diag(self, theta, phi):
+        """Compute the diagonal terms of the omitted-difference covariance.
+
+        Parameters
+        ----------
+        theta, phi : ndarray
+            Forward and backward recursion terms.
+
+        Returns
+        -------
+        ndarray
+            Diagonal terms, of shape ``(ndiff, npix)``.
+        """
         return theta[:-1]/theta[self.ndiff] * phi[1:]
     
     def _get_cp1_term(self, phi, theta, Theta, Phi):
+        """Compute the cross term between the slope and each difference.
+
+        Parameters
+        ----------
+        phi, theta : ndarray
+            Backward and forward recursion terms.
+        Theta, Phi : ndarray
+            Cumulative recursion terms.
+
+        Returns
+        -------
+        ndarray
+            Cross terms, of shape ``(ndiff, npix)``.
+        """
         return self.sign/theta[self.ndiff] * (phi[1:]*Theta + theta[:-1]*Phi)
 
     def _get_bp1_term(self, beta,theta, phi, ThetaD, PhiD):
+        """Compute the data term of each difference.
+
+        Parameters
+        ----------
+        beta : ndarray
+            Off-diagonal of the covariance matrix. Unused.
+        theta, phi : ndarray
+            Forward and backward recursion terms.
+        ThetaD, PhiD : ndarray
+            Data-weighted forward and backward recursion terms.
+
+        Returns
+        -------
+        ndarray
+            Data terms, of shape ``(ndiff, npix)``.
+        """
         return self.sign/theta[self.ndiff] * (phi[1:]*ThetaD[1:] + theta[:-1]*PhiD)
 
     def _get_cov_offdiag(self, beta,theta, phi):
+        """Compute the off-diagonal terms of the omitted-difference covariance.
+
+        Parameters
+        ----------
+        beta : ndarray
+            Off-diagonal of the covariance matrix.
+        theta, phi : ndarray
+            Forward and backward recursion terms.
+
+        Returns
+        -------
+        ndarray
+            Off-diagonal terms, of shape ``(ndiff - 1, npix)``.
+        """
         return -beta * theta[:-2] * phi[2:] / theta[self.ndiff]
 
     def _get_PhiD(self, diffd, beta, phi): 
+        """Compute the data-weighted backward recursion term.
+
+        Parameters
+        ----------
+        diffd : ndarray
+            Differences divided by the time between resultants.
+        beta : ndarray
+            Off-diagonal of the covariance matrix.
+        phi : ndarray
+            Backward recursion term.
+
+        Returns
+        -------
+        ndarray
+            Recursion term of shape ``(ndiff, npix)``.
+        """
         PhiD = np.zeros((self.ndiff, *self.npix))       
         for i in range(self.ndiff - 2, -1, -1):
                 PhiD[i] = (PhiD[i+1] + self.sign[i+1] * diffd[i+1] * phi[i+2]) * beta[i] 
@@ -783,6 +1452,20 @@ class Brandt2024(Fitter):
         return PhiD
         
     def _get_theta(self, alpha, beta):
+        """Compute the forward recursion term (leading principal minors).
+
+        Parameters
+        ----------
+        alpha : ndarray
+            Diagonal of the covariance matrix.
+        beta : ndarray
+            Off-diagonal of the covariance matrix.
+
+        Returns
+        -------
+        ndarray
+            Recursion term of shape ``(ndiff + 1, npix)``.
+        """
         theta = np.ones((self.ndiff+1, *self.npix))         
         theta[1] = alpha[0]
         for i in range(2,self.ndiff+1):
@@ -791,6 +1474,20 @@ class Brandt2024(Fitter):
         return theta
     
     def _get_phi(self, alpha, beta):
+        """Compute the backward recursion term (trailing principal minors).
+
+        Parameters
+        ----------
+        alpha : ndarray
+            Diagonal of the covariance matrix.
+        beta : ndarray
+            Off-diagonal of the covariance matrix.
+
+        Returns
+        -------
+        ndarray
+            Recursion term of shape ``(ndiff + 1, npix)``.
+        """
         phi = np.ones((self.ndiff+1, *self.npix))        
         phi[self.ndiff-1] = alpha[self.ndiff-1] 
         for i in range(self.ndiff-2, -1, -1):
@@ -800,6 +1497,20 @@ class Brandt2024(Fitter):
         return phi   
     
     def _get_Phi(self, beta, phi):
+        """Compute the cumulative backward recursion term.
+
+        Parameters
+        ----------
+        beta : ndarray
+            Off-diagonal of the covariance matrix.
+        phi : ndarray
+            Backward recursion term.
+
+        Returns
+        -------
+        ndarray
+            Recursion term of shape ``(ndiff, npix)``.
+        """
         Phi = np.zeros((self.ndiff, *self.npix))    
         for i in range(self.ndiff-2, -1, -1):
             Phi[i] = beta[i]*Phi[i+1] 
@@ -808,6 +1519,20 @@ class Brandt2024(Fitter):
         return Phi    
     
     def _get_Theta(self, beta, theta):
+        """Compute the cumulative forward recursion term.
+
+        Parameters
+        ----------
+        beta : ndarray
+            Off-diagonal of the covariance matrix.
+        theta : ndarray
+            Forward recursion term.
+
+        Returns
+        -------
+        ndarray
+            Recursion term of shape ``(ndiff, npix)``.
+        """
         Theta = np.zeros((self.ndiff, *self.npix))          
         Theta[0] = -theta[0]
         for i in range(1,self.ndiff):
@@ -817,6 +1542,22 @@ class Brandt2024(Fitter):
         return Theta
             
     def _get_ThetaD(self, diffd, beta, theta): 
+        """Compute the data-weighted forward recursion term.
+
+        Parameters
+        ----------
+        diffd : ndarray
+            Differences divided by the time between resultants.
+        beta : ndarray
+            Off-diagonal of the covariance matrix.
+        theta : ndarray
+            Forward recursion term.
+
+        Returns
+        -------
+        ndarray
+            Recursion term of shape ``(ndiff + 1, npix)``.
+        """
         
         ThetaD = np.zeros((self.ndiff+1, *self.npix))            
         ThetaD[1] = -diffd[0] * theta[0]
@@ -827,17 +1568,19 @@ class Brandt2024(Fitter):
         return ThetaD
       
 class Kubik2015(Fitter): 
-    """
-    Method based on Kubik2016 to estimate flux from group-difference images
+    """Flux estimator from group differences (Kubik et al. 2016).
+
+    Parameters
+    ----------
+    data : ndarray
+        Datacube of shape ``(ngroups, ny, nx)``.
+    times : ndarray, optional
+        Time of each group, of shape ``(ngroups,)``. Default is None.
+    macc : tuple of int, optional
+        MACC readout mode ``(ngroups, nframes, ndrops)``. If None, each
+        group is a single frame with no dropped frames. Default is None.
     """
     def __init__(self, data, times=None, macc=None):
-        """Kubik 2015 flux estimator. Uses the group difference.
-
-        Args:
-            ramp (ndarray): Datacube to consider (N, M, M) 
-            t_frame (float): The time per frame.
-            macc (tuble, optional): MACC mode for data acquisition. Defaults to None.
-        """
         self.diff = np.diff(data, axis=0)
         self.tpf = np.diff(times).mean() #Time/frame.
         if macc is not None : 
@@ -852,6 +1595,18 @@ class Kubik2015(Fitter):
         self.pixshape = data.shape[1:]
     
     def estim_f(self, sigma_r=10):
+        """Estimate the flux.
+
+        Parameters
+        ----------
+        sigma_r : float or ndarray, optional
+            Read noise, average or per pixel. Default is 10.
+
+        Returns
+        -------
+        ndarray
+            Flux per group interval, of shape ``(ny, nx)``.
+        """
         
         xi = (1+self.alpha)/2.
         beta = 2*sigma_r**2 / (1+self.alpha)
@@ -860,14 +1615,19 @@ class Kubik2015(Fitter):
         return np.sqrt(xi**2 + m2 - xi - beta)
         
     def estim_sigf(self,sigma_r, fe):
-        """Variance estimator.
-    
-        Args:
-            fe (float or ndarray): Average gain or gain map
-            sigma_r (float or ndarray): Average readnoise or readnoise map.
-    
-        Returns:
-            Variance : Variance of the slope of the ramp in units of ADU.
+        """Estimate the variance of the flux.
+
+        Parameters
+        ----------
+        sigma_r : float or ndarray
+            Read noise, average or per pixel.
+        fe : float or ndarray
+            Gain, average or per pixel.
+
+        Returns
+        -------
+        ndarray
+            Variance of the flux.
         """
         alpha_ = self.alpha
         beta_ =  2*sigma_r**2 / (1+self.alpha)
@@ -879,13 +1639,22 @@ class Kubik2015(Fitter):
         return term
 
     def fit(self, readnoise=10, fe=1, inplace=True):
-        """Fit method.
+        """Fit the ramp.
 
-        Args:
-            fe (int, optional): Average gain or gain map. Defaults to 1.
-            readnoise (int, optional):  Average readnoise or readnoise map. Defaults to 10.
-        Returns:
-            tuple of ndarray : slope and variance of the considered ramp.
+        Parameters
+        ----------
+        readnoise : float or ndarray, optional
+            Read noise, average or per pixel. Default is 10.
+        fe : float or ndarray, optional
+            Gain, average or per pixel. Default is 1.
+        inplace : bool, optional
+            Unused; the result is always stored in ``self.result``. Default
+            is True.
+
+        Returns
+        -------
+        RampFitResults
+            Result with the ``slope`` and ``var``.
         """        
         slope = self.estim_f(sigma_r=readnoise)
         err = self.estim_sigf(sigma_r=readnoise, fe=fe)
@@ -895,6 +1664,23 @@ class Kubik2015(Fitter):
         return self.result 
             
     def get_model(self, pixels=None, coefs=None):
+        """Evaluate the linear ramp model ``slope * t``.
+
+        Parameters
+        ----------
+        pixels : tuple of int, optional
+            Indices ``(i, j)`` along the two spatial axes. If None, the
+            model of all pixels is returned. Default is None.
+        coefs : ndarray, optional
+            Slope. If None, the slope of the stored result is used. Default
+            is None.
+
+        Returns
+        -------
+        ndarray
+            Model of shape ``(ngroups, ny, nx)``, or ``(ngroups,)`` if
+            ``pixels`` is given.
+        """
         if coefs is None : 
             coefs = self.result.slope 
 
@@ -909,6 +1695,27 @@ class Kubik2015(Fitter):
 
 
 class RampFitResults():
+    """Container of the outputs of a ramp fit.
+
+    Parameters
+    ----------
+    slope : ndarray, optional
+        Fitted slope (count rate). Default is None.
+    mask2d : ndarray, optional
+        2D data quality mask. Default is None.
+    mask3d : ndarray, optional
+        3D (per group) data quality mask. Default is None.
+    var : ndarray, optional
+        Variance of the slope. Default is None.
+    qof : ndarray, optional
+        Quality of fit, e.g. the chi-square. Default is None.
+    offset : ndarray, optional
+        Fitted offset. Default is None.
+    nl : ndarray, optional
+        Fitted non-linear coefficients. Default is None.
+    model : str, optional
+        Name of the fitter. Default is ``'LSQFit'``.
+    """
     
     _reshape_ok = ['slope', 
                     'mask2d',
@@ -932,46 +1739,94 @@ class RampFitResults():
         
     @property
     def slope(self): 
+        """Fitted slope (count rate)."""
         return self._slope
     
     @property
     def mask2d(self): 
+        """2D data quality mask."""
         return self._mask2d
     
     @property
     def mask3d(self): 
+        """3D (per group) data quality mask."""
         return self._mask3d
     
     @property
     def qof(self): 
+        """Quality of fit, e.g. the chi-square."""
         return self._qof
     
     @property
     def offset(self): 
+        """Fitted offset."""
         return self._offset
     
     @property
     def nl(self): 
+        """Fitted non-linear coefficients."""
         return self._nl
     
     @property
     def model(self): 
+        """Name of the fitter."""
         return self._model
 
     @property
     def var(self): 
+        """Variance of the slope."""
         return self._var
     
     def set_slope(self, slope): 
+       """Set the slope (count rate).
+
+       Parameters
+       ----------
+       slope : ndarray
+           New value.
+       """
        self._slope = slope
     
     def set_mask2d(self, mask2d): 
+        """Set the 2D data quality mask.
+
+        Parameters
+        ----------
+        mask2d : ndarray
+            New value.
+        """
         self._mask2d = mask2d
     
     def set_mask3d(self, mask3d): 
+        """Set the 3D (per group) data quality mask.
+
+        Parameters
+        ----------
+        mask3d : ndarray
+            New value.
+        """
         self._mask3d = mask3d
 
     def reshape(self, *shape, reshape_only=None):
+        """Reshape the stored arrays in place.
+
+        Arrays whose size differs from ``prod(shape)`` keep their first
+        dimension, i.e. are reshaped to ``(n, *shape)``.
+
+        Parameters
+        ----------
+        *shape : int
+            Target shape.
+        reshape_only : str or list of str, optional
+            Names of the attributes to reshape. If None, all reshapable
+            attributes are reshaped. Default is None.
+
+        Raises
+        ------
+        ValueError
+            If ``reshape_only`` contains an attribute that cannot be
+            reshaped.
+        """
         if reshape_only is None : 
             reshape_only = self._reshape_ok
         
@@ -997,6 +1852,12 @@ class RampFitResults():
     
     
 class IP2IBestFit(Fitter):
+    """Likelihood-based fitter accounting for non-linearity, BFE and persistence.
+
+    Notes
+    -----
+    Placeholder, not implemented yet.
+    """
     pass
      #likelihood based method ?
      # Placeholder for now : 
