@@ -204,7 +204,7 @@ def get_zscores(data, threshold_mad=9, threshold_std=5):
     z_mad = (data - np.nanmedian(data, axis=0, keepdims=True))
     z_std = z_mad/np.nanstd(data,axis=0, ddof=1, keepdims=True)
 
-    z_mad /=median_abs_deviation(data, scale='normal', nan_policy='omit', axis=0)
+    z_mad /= median_abs_deviation(data, scale='normal', nan_policy='omit', axis=0)
 
     mask = (z_mad >= threshold_mad) & (z_std >= threshold_std)
     return mask
@@ -393,7 +393,7 @@ def get_cosmics_dep(data, to_mask=None, cr_threshold_mad=9, cr_threshold_std=5):
                              threshold_std=cr_threshold_std)
 
     else :
-        data = np.ma.masked_where(to_mask, data) #Create masked array for easy diff
+        data = np.ma.masked_where(to_mask, data) # Create masked array for easy diff
 
         # Then convert to NaN because faster than using the masked array itself (x2).
         zscore = get_zscores(np.ma.diff(data, axis=0).filled(fill_value=np.nan),
