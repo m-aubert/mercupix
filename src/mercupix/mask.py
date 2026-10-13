@@ -195,7 +195,18 @@ def get_hotpix(path=None, **kwargs):
 
     return mask
 
-def get_cosmics(data, inpaint=True, cr_threshold_mad=7, window_length=5):
+def _nan_reference(diff, window_length):
+    """Leave-one-out moving median along axis 0, ignoring NaNs. ``diff``: (ndiff, npix)."""
+    w = window_length
+    padded = np.pad(diff, ((w, w), (0, 0)), mode="reflect")          # NumPy "reflect" = SciPy "mirror"
+    windows = np.lib.stride_tricks.sliding_window_view(padded, 2 * w + 1, axis=0)  # (ndiff, npix, 2w+1)
+    windows = np.delete(windows, w, axis=-1)                           # leave the tested difference out
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)                # windows with only NaNs
+        return np.nanmedian(windows, axis=-1)
+
+def get_cosmics(data, inpaint=True, cr_threshold_mad=7, window_length=5,
+                saturated=None, min_valid=6):
     """Detect, and optionally correct, the jumps (cosmic rays) in a ramp.
 
     A jump shows up as one group difference much larger than its
@@ -277,9 +288,31 @@ def get_cosmics(data, inpaint=True, cr_threshold_mad=7, window_length=5):
     # cosmic score based on residual vs nmad.
     residual = diff - reference
     scale = median_abs_deviation(residual, axis=0, scale="normal")
-    zscore = residual / scale            # noise-free pixels: inf at a jump, nan elsewhere
-    cr = zscore >= cr_threshold_mad      # n
 
+    # Next solves the problem of staturation in group not caused by cosmics
+    # saturated is the format (ngroups, ny, nx) boolean and computed only if corr_saturation=True
+    valid = True
+    if saturated is not None:
+        saturated = np.broadcast_to(np.asarray(saturated, dtype=bool), data.shape)
+        # first test which should be ignored.
+        valid = ~(saturated[1:] | saturated[:-1])            # both groups of a difference must be valid
+        # which pixel are affected (2d image)
+        affected = ~valid.all(axis=0)
+        # This steps flatten the pixel axes (not the group.)
+        diff_nan = np.where(valid[:, affected], diff[:, affected], np.nan)
+        ref_nan = _nan_reference(diff_nan, window_length)
+        res_nan = diff_nan - ref_nan
+        reference[:, affected] = np.where(np.isnan(ref_nan), diff[:, affected], ref_nan)
+        residual[:, affected] = res_nan
+        scale[affected] = median_abs_deviation(res_nan, axis=0, scale="normal", nan_policy="omit")
+
+        min_valid = min(min_valid, diff.shape[0])
+        scale = np.where(valid.sum(axis=0) >= min_valid, scale, np.nan)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        zscore = residual / scale
+
+    cr = (zscore >= cr_threshold_mad) & valid
     # [1:] because we did a diff
     mask[1:][cr] = _BITFLAGS_DICT["CR"]
 

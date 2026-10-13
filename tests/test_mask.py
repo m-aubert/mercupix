@@ -238,16 +238,22 @@ def test_get_cosmics_noise_free_ramp():
     assert np.count_nonzero(cr_mask & CR) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="saturated groups (zero differences) are not excluded: "
-                                       "the valid groups before saturation get false CR flags")
-def test_get_cosmics_ignores_saturation():
-    """A pixel that saturates mid-ramp, without cosmic ray, is not flagged CR."""
-    data = make_ramps(npix=8) * 100 + 10_000          # bright: saturates around group 7
+def test_get_cosmics_saturated():
+    """With saturated=, saturating pixels get no false CR, and real jumps are still found."""
+    data = make_ramps(npix=8, flux=2_000.) + 10_000    # bright: all pixels saturate around group 9 of 20
+    data[4:, 0, 0] += 1_500                            # one cosmic ray (~20 sigma), before saturation
     data = np.minimum(data, 65_535)
+    saturated = mask.get_saturated(data) > 0
+    assert saturated[-1].all()                         # the test needs saturating pixels
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        cr_mask, _ = mask.get_cosmics(data, inpaint=False)
-    assert not (cr_mask & CR).any()
+        cr_mask, inpainted = mask.get_cosmics(data, inpaint=True, saturated=saturated)
+
+    flagged = (cr_mask & CR) > 0
+    assert flagged[4, 0, 0]                            # the cosmic ray, on the right group
+    assert np.count_nonzero(flagged) == 1              # and nothing else
+    assert np.array_equal(inpainted[:, 1:], data[:, 1:])   # other pixels left untouched
 
 
 @pytest.mark.parametrize("ngroups", [2, 3])
