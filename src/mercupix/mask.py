@@ -105,15 +105,27 @@ def get_charge_migration(mask, kernel=None):
     --------
     scipy.ndimage.binary_dilation
     """
+
+
     from scipy.ndimage import binary_dilation, generate_binary_structure
 
     if kernel is None :
         kernel = generate_binary_structure(2, 2)
 
-    new_mask = binary_dilation(mask, kernel, axes=(1,2))
-    new_mask[mask.astype(bool)] = False
-    mask[new_mask.astype(bool)] = _BITFLAGS_DICT['CM']
-    return mask
+    # Old from Marie. Is that change ok ? if so rm commented lines.
+    #new_mask = binary_dilation(mask, kernel, axes=(1,2))
+    #new_mask[mask.astype(bool)] = False
+    #mask[new_mask.astype(bool)] = _BITFLAGS_DICT['CM']
+
+    saturated = mask.astype(bool)
+    neighbours = binary_dilation(saturated, kernel, axes=(1,2)) & ~saturated
+    cm_mask = np.zeros(mask.shape, dtype=_MASK_DTYPE)
+    cm_mask[neighbours] = _BITFLAGS_DICT['CM']
+
+    return cm_mask
+
+
+
 
 def get_downpix(path=None):
     """Get the disconnected (dead) pixel map.
