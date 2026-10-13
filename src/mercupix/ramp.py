@@ -1,4 +1,5 @@
 """Processing of raw up-the-ramp data prior to ramp fitting."""
+import warnings
 import numpy as np
 import skimage as ski
 from .baseramp import BaseRamp
@@ -124,17 +125,27 @@ class RawRamp(BaseRamp):
         if data is None :
             data = self.correct_refpix()
 
+        if darkdata is None and not metadata:
+            darkdata = np.atleast_1d(0)
+        elif darkdata is None: # has metadata
+            from .io import get_dark
+            darkdata = get_dark(metadata['dark'])
+        else: # has both darkdata and metadata
+            warnings.warn("darkdata and metadata have been given. darkdata favored.")
+
+        """
         if darkdata is None:
             darkdata = np.atleast_1d(0)
 
         elif bool(metadata):
             from .io import get_dark
             darkdata = get_dark(metadata['dark'])
+        """
 
         if darkdata.ndim == 2:
-            return data - darkdata*self.times[:,None,None]
-        else :
-            return data - darkdata
+            return data - darkdata * self.times[:,None,None]
+
+        return data - darkdata
 
 
     def get_mask(self, data=None,
@@ -199,18 +210,21 @@ class RawRamp(BaseRamp):
         mask = np.zeros(self.active_shape, dtype=_MASK_DTYPE)
 
         # we do not do "inplace mask += ..." because the dimension may increase (2D => 3D)
-        if disconnected :
+        if disconnected:
             from .mask import get_downpix
             path = None if self.metadata is None else self.metadata['path']['DIS']
             mask = mask | get_downpix(path=path)
 
-        if hot :
+        if hot:
             from .mask import get_hotpix
             # flag hot and warm
             path = None if self.metadata is None else self.metadata['path']['HOT']
             mask = mask | get_hotpix(path=path)
 
-        if saturated:
+        if saturated or charge_migration:
+            if not saturated:
+                warnings.warn("charge_migration requires saturated=True, setting saturated=True")
+
             from .mask import get_saturated
             # raw uint16 input, expands mask dims here.
             # Explicit sum cause inplace add does not broadcast.
@@ -225,7 +239,10 @@ class RawRamp(BaseRamp):
 
             mask = mask | mask_cm
 
-        if cosmics :
+        if cosmics:
+            if data is None:
+                warnings.warn("cosmics=True but no data provided, skipping jump detection.")
+
             from .mask import get_cosmics
             maskjump , data = get_cosmics(data=data,
                                 cr_threshold_mad=cr_threshold_mad,
@@ -373,7 +390,7 @@ class RawRamp(BaseRamp):
 
 
     def preprocess_ramp(self,
-                        data= None,
+                        data=None,
                         corr_refpix=True,
                         corr_ipc=False,
                         corr_offset=False,
@@ -385,7 +402,7 @@ class RawRamp(BaseRamp):
                         mask_kwargs={},
                         metadata={},
                         nl_coefficients=None,
-                        ipckernel=np.ones((5,5)),
+                        ipckernel=None,
                         darkdata=None,
                         offset=0):
         """Apply the corrections required before fitting the ramp.
@@ -424,8 +441,8 @@ class RawRamp(BaseRamp):
             Non-linearity coefficients, used if ``corr_nl=True``. See
             `correct_nl`. Default is None.
         ipckernel : ndarray, optional
-            IPC kernel, used if ``corr_ipc=True``. Default is
-            ``np.ones((5, 5))``.
+            IPC kernel, used if ``corr_ipc=True``. Default is None,
+            which leads to ``np.ones((5, 5))``.
         darkdata : ndarray, optional
             Dark rate (2D) or dark cube (3D), used if ``corr_dark=True``. A
             2D dark is multiplied by `times` before subtraction. Default is
@@ -454,35 +471,41 @@ class RawRamp(BaseRamp):
                                         metadata=metadata,
                                         offset=offset) #Basically bias here.
         if corr_nl :
-            data= self.correct_nl(data=data,
+            data = self.correct_nl(data=data,
                                        metadata=metadata,
                                        nl_coefficients=nl_coefficients)
 
         if corr_ipc :
-            data= self.correct_ipc(data=data,
+            if ipckernel is None:
+                ipckernel = np.ones((5,5))
+
+            data = self.correct_ipc(data=data,
                                 metadata=metadata,
                                 ipckernel=ipckernel)
 
         if corr_dark :
-            data= self.correct_dark(data=data,
+            data = self.correct_dark(data=data,
                                     metadata=metadata,
                                     darkdata=darkdata)
 
         if comp_var :
             varcube = self.get_variance(data=data) # Unclear when and what
         else:
-            varcube=0
+            varcube = 0
 
+        # MARIE: I have the feeling that cosmics are computed twice.
+        #  => firs to build the bitmask
+        #  => second to correct for it. That is likely not what we want.
         if mask:
             mask, data = self.get_mask(data=data, inpaint=corr_cosmics, **mask_kwargs)
-
-        else :
-            if corr_cosmics :
-                from .mask import get_cosmics
-                _, data = get_cosmics(data=data, inpaint=corr_cosmics,
-                                      cr_threshold_mad=mask_kwargs.pop('cr_threshold_mad', 7))
-
+        else:
             mask = np.zeros(data.shape, dtype=np.int8)
+
+        if corr_cosmics :
+            from .mask import get_cosmics
+            cr_threshold_mad = mask_kwargs.get('cr_threshold_mad', 7)
+            _, data = get_cosmics(data=data, inpaint=corr_cosmics,
+                                  cr_threshold_mad=cr_threshold_mad)
 
         return (data, varcube, mask)
 

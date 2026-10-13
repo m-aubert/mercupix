@@ -333,8 +333,8 @@ def detect_hotpix(dark_slope, warm_threshold=0.15, hot_threshold=0.5):
     """
 
     mask = np.zeros(dark_slope.shape, _MASK_DTYPE)
-    mask[(dark_slope >= warm_threshold) & (dark_slope <hot_threshold )] += _BITFLAGS_DICT['WARM']
-    mask[(dark_slope >= hot_threshold)] += _BITFLAGS_DICT['HOT']
+    mask[(dark_slope >= warm_threshold) & (dark_slope < hot_threshold )] |= _BITFLAGS_DICT['WARM']
+    mask[(dark_slope >= hot_threshold)] |= _BITFLAGS_DICT['HOT']
 
     return mask
 

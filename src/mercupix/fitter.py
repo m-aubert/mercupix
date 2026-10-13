@@ -754,9 +754,14 @@ class Brandt2024(Fitter):
     .. [2] Brandt, T. D. 2024, "Likelihood-based Jump Detection and Cosmic
        Ray Rejection for Detectors Read Out Up-the-Ramp", PASP, 136, 045005.
     """
-    def __init__(self, data, times=None, mask=None, readnoise=11, timeframe=None,
-                 countrateguess=None, reset=False, nframes_list = [], rescale=True):
-
+    def __init__(self, data, times, readnoise=None,
+                    mask=None, timeframe=None,
+                    countrateguess=None, reset=False, nframes_list=[],
+                    rescale=True):
+        """ """
+        if readnoise is None:
+            warnings.warn("No readnoise given, using 11 ADU. Explicitly set it to silent this warning.")
+            readnoise = 11.
 
         self.frame_shape = data.shape[1:]
         self.readnoise = np.atleast_1d(readnoise)
@@ -778,8 +783,11 @@ class Brandt2024(Fitter):
                 if ni > 1 :
                     # Reverse engineer the time of each read.
                     # Assumes to be even.
-                    tk = np.linspace(times[i-1], times[i], num=ni+1)[1:]
-                    mean_ti = np.linspace(times[i-1], times[i], num=ni+1)[1:].mean()
+                    t_start = times[i-1] if i > 0 else 0. # assuming starts at 0.
+                    tk = np.linspace(t_start, times[i], num=ni+1)[1:]
+                    mean_ti = tk.mean()
+                    #tk = np.linspace(times[i-1], times[i], num=ni+1)[1:]
+                    #mean_ti = np.linspace(times[i-1], times[i], num=ni+1)[1:].mean()
                     mean_t.append(mean_ti)
                 else :
                     # Some resultant can still be only 1 frame.
