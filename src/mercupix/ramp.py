@@ -198,16 +198,17 @@ class RawRamp(BaseRamp):
 
         mask = np.zeros(self.active_shape, dtype=_MASK_DTYPE)
 
+        # we do not do "inplace mask += ..." because the dimension may increase (2D => 3D)
         if disconnected :
             from .mask import get_downpix
             path = None if self.metadata is None else self.metadata['path']['DIS']
-            mask += get_downpix(path=path)
+            mask = mask | get_downpix(path=path)
 
         if hot :
             from .mask import get_hotpix
             # flag hot and warm
             path = None if self.metadata is None else self.metadata['path']['HOT']
-            mask += get_hotpix(path=path)
+            mask = mask | get_hotpix(path=path)
 
         if saturated:
             from .mask import get_saturated
@@ -216,13 +217,13 @@ class RawRamp(BaseRamp):
             sat_mask = get_saturated(self.data, #Specifically use int raw data for saturation.
                                   sat_threshold=sat_threshold)[:, self.actslice, self.actslice]
 
-            mask = mask + sat_mask
+            mask = mask | sat_mask
 
         if charge_migration :
             from .mask import get_charge_migration
             mask_cm = get_charge_migration(sat_mask)
 
-            mask = mask + mask_cm
+            mask = mask | mask_cm
 
         if cosmics :
             from .mask import get_cosmics
@@ -230,7 +231,7 @@ class RawRamp(BaseRamp):
                                 cr_threshold_mad=cr_threshold_mad,
                                 inpaint=inpaint)
 
-            mask = mask + maskjump #For some dtype, inplace sum does not work. Document for next time.
+            mask = mask | maskjump #For some dtype, inplace sum does not work. Document for next time.
 
         return mask, data
 
