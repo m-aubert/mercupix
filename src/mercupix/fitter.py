@@ -1718,22 +1718,33 @@ class Brandt2024(Fitter):
 class Kubik2015(Fitter):
     """Flux estimator from group differences (Kubik et al. 2016).
 
-    Unlike the other fitters, the flux returned by `fit` is per group
-    interval (ADU per group), not per unit of time.
+    The flux is estimated from the second moment of the group differences,
+    assuming a linear ramp with Poisson and read noise. By default `fit`
+    returns it in ADU per unit of ``times``, like the other fitters.
 
     Parameters
     ----------
     data : ndarray
         Datacube of shape ``(ngroups, ny, nx)``.
-    times : ndarray, optional
-        Time of each group, of shape ``(ngroups,)``. Default is None.
+    times : ndarray
+        Time of each group, of shape ``(ngroups,)``. Must be given: the
+        mean time between groups converts the flux per group into a flux
+        per unit of time.
     macc : tuple of int, optional
         MACC readout mode ``(ngroups, nframes, ndrops)``. If None, each
         group is a single frame with no dropped frames. Default is None.
+    mask : ndarray, optional
+        Data quality bitmask of ``data``. Stored but not used. Default is
+        None.
     """
-    def __init__(self, data, times=None, macc=None):
+    def __init__(self, data, times=None, macc=None, mask=None):
+        # super to support basic functionalities.
+        super().__init__(data=data, times=times, mask=mask)
+
+        # needs specific to Kubik implementation.
         self.diff = np.diff(data, axis=0)
         self.tpf = np.diff(times).mean() #Time/frame.
+
         if macc is not None :
             self.ng, self.nf, self.nd = macc
         else :
@@ -1762,8 +1773,7 @@ class Kubik2015(Fitter):
         xi = (1+self.alpha)/2.
         beta = 2*sigma_r**2 / (1+self.alpha)
         m2 = np.sum( (self.diff + beta)**2, axis=0) / (self.ng-1)
-
-        return np.sqrt(xi**2 + m2 - xi - beta)
+        return np.sqrt(xi**2 + m2) - xi - beta
 
     def estim_sigf(self,sigma_r, fe):
         """Estimate the variance of the flux.
@@ -1789,7 +1799,7 @@ class Kubik2015(Fitter):
 
         return term
 
-    def fit(self, readnoise=10, fe=1, inplace=True):
+    def fit(self, readnoise=10, fe=1, inplace=True, per_second=True):
         """Fit the ramp.
 
         Parameters
@@ -1799,24 +1809,42 @@ class Kubik2015(Fitter):
         fe : float or ndarray, optional
             Gain, average or per pixel. Default is 1.
         inplace : bool, optional
-            Unused; the result is always stored in ``self.result``. Default
-            is True.
+            Unused; the result is always stored in ``self.result``.
+            Default is True.
+        per_second : bool, optional
+            Whether to return the flux in ADU per unit of `times` (the flux
+            per group divided by the mean time between groups, and its
+            variance by the square of that time), like the other fitters.
+            If False, the flux is per group interval. Default is True.
 
         Returns
         -------
         RampFitResults
-            Result with the ``slope`` (flux per group interval, see
-            `estim_f`) and its variance ``var``.
+            Result with the flux ``slope`` and its variance ``var``.
+
+        Notes
+        -----
+        ``var`` comes from `estim_sigf`. It matches the measured scatter of
+        the flux when photon noise dominates, but overestimates it when read
+        noise matters (by ~1.7x at 100 ADU/s with 10 ADU of read noise, and
+        ~20x at 1 ADU/s).
         """
         slope = self.estim_f(sigma_r=readnoise)
-        err = self.estim_sigf(readnoise, fe)
+        var = self.estim_sigf(readnoise, fe) # returns the variance
 
-        self.result = RampFitResults(slope=slope, var=err)
+        if per_second:
+            slope = slope / self.tpf
+            var = var / self.tpf**2
 
+        self.result = RampFitResults(slope=slope, var=var)
         return self.result
+
 
     def get_model(self, pixels=None, coefs=None):
         """Evaluate the linear ramp model ``slope * t``.
+
+        The model has no offset (`Kubik2015` does not estimate one), so the
+        residuals of `get_residuals` include the offset of the data.
 
         Parameters
         ----------
@@ -1824,8 +1852,9 @@ class Kubik2015(Fitter):
             Indices ``(i, j)`` along the two spatial axes. If None, the
             model of all pixels is returned. Default is None.
         coefs : ndarray, optional
-            Slope. If None, the slope of the stored result is used. Default
-            is None.
+            Slope, in the units of the stored result (flux per unit of
+            `times` with the default ``per_second=True``). If None, the
+            slope of the stored result is used. Default is None.
 
         Returns
         -------

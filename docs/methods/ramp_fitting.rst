@@ -56,7 +56,7 @@ At a glance
      - ``slope``, ``offset`` (value at ``t = 0``).
      - ``slope``, ``var``, ``qof`` (chi-square), ``mask2d``; ``offset``
        with ``intercept=True``.
-     - ``slope`` (per group interval, not per second), ``var``.
+     - ``slope``, ``var`` (overestimated when read noise matters).
    * - Speed :sup:`1`
      - 9 ms (degree 1), 12 ms (degree 2)
      - 29 ms, 0.5 s with ``jumps=True``
@@ -64,7 +64,7 @@ At a glance
    * - Status
      - Stable.
      - Stable; the ``reset`` and ``intercept=True`` options currently fail.
-     - Experimental: biased, and not usable through ``fit_ramp``.
+     - Experimental: no offset, variance not reliable at low flux.
 
 :sup:`1` 256 x 256 pixels, 30 groups, on a laptop. See
 :doc:`../notebooks/compare_ramp_fitters`.
@@ -132,16 +132,23 @@ Usage
 
          from mercupix.fitter import Kubik2015
 
+         from mercupix.fitter import fit_ramp, Kubik2015
+
+         # from a raw ramp: readnoise is a fit() argument for Kubik2015
+         result = fit_ramp(ramp, method="Kubik", fit_args=dict(readnoise=10))
+
+         # from an array
          fitter = Kubik2015(data, times=times, macc=(ngroups, nframes, ndrops))
-         result = fitter.fit(readnoise=10)      # flux per group interval
+         result = fitter.fit(readnoise=10)      # ADU/s; per_second=False for ADU per group
+
+      The flux is unbiased and, when photon noise dominates, as precise as
+      `~mercupix.fitter.Brandt2024`.
 
       .. warning::
 
-         ``fit`` returns the flux per group interval (not per second), offset
-         by ``2 * readnoise**2``: for a true 100 ADU/s with 2.8 s groups and
-         10 ADU of read noise it returns ~480 instead of 280.
-         ``fit_ramp(method="Kubik")`` currently fails (``Kubik2015`` does not
-         accept the ``mask`` passed by ``from_rawramp``).
+         The returned ``var`` overestimates the scatter of the flux when read
+         noise matters (~1.7x at 100 ADU/s with 10 ADU of read noise, ~20x at
+         1 ADU/s). Cosmic rays are not handled and the model has no offset.
 
 Which one should I use?
 -----------------------

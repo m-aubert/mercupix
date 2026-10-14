@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from numpy.polynomial import polynomial as P
 
-from mercupix.fitter import LSQFit
+from mercupix.fitter import LSQFit, Kubik2015, Brandt2024
 from mercupix.mock import mock_ramps
 
 FLUXES = np.array([20., 100., 300., 700.])         # ADU/s, one per row of the mock image
@@ -132,3 +132,91 @@ def test_lsqfit_herm_alias():
     herm = LSQFit(data, times=times, degree=2, polytype="herm").fit()
     hermite = LSQFit(data, times=times, degree=2, polytype="hermite").fit()
     assert np.allclose(herm.slope, hermite.slope)
+
+
+# ========================== #
+#  Kubik2015                 #
+# ========================== #
+KUBIK_DT = 2.8                                     # mock_ramps default time between groups
+
+
+def kubik_mock(flux, readnoise, shape=(128, 128), seed=1):
+    """Linear mock ramps (Kubik assumes linear ramps): times, data."""
+    return mock_ramps(flux=flux, shape=shape, readnoise=readnoise, dt=KUBIK_DT, seed=seed)
+
+
+@pytest.mark.parametrize("readnoise", [5., 10., 30.])
+@pytest.mark.parametrize("flux", [1., 10., 100., 1000.])
+def test_kubik_flux_unbiased(flux, readnoise):
+    """The flux is unbiased, in ADU/s, for faint to bright pixels and low to high read noise."""
+    times, data = kubik_mock(flux, readnoise)
+    res = Kubik2015(data, times=times).fit(readnoise=readnoise)
+    assert res.slope.shape == data.shape[1:]
+    assert_unbiased(res.slope.reshape(1, -1), np.array([flux]))
+
+
+def test_kubik_per_second():
+    """per_second=True divides the slope by the group time and the variance by its square."""
+    times, data = kubik_mock(100., 10.)
+    per_group = Kubik2015(data, times=times).fit(readnoise=10., per_second=False)
+    per_second = Kubik2015(data, times=times).fit(readnoise=10., per_second=True)
+    assert np.allclose(per_second.slope * KUBIK_DT, per_group.slope, rtol=1e-5)
+    assert np.allclose(per_second.var * KUBIK_DT**2, per_group.var, rtol=1e-5)
+    assert_unbiased(per_group.slope.reshape(1, -1), np.array([100. * KUBIK_DT]))
+
+
+@pytest.mark.parametrize("flux", [100., 1000.])
+def test_kubik_precision_close_to_brandt(flux):
+    """Photon-noise dominated: the scatter of the flux is within 5 % of the Brandt2024 one."""
+    times, data = kubik_mock(flux, 5.)
+    kubik = Kubik2015(data, times=times).fit(readnoise=5.).slope
+    brandt = Brandt2024(data, times, readnoise=5.).fit().slope
+    assert abs(kubik.std() / brandt.std() - 1) < 0.05
+
+
+VARIANCE_XFAIL = pytest.mark.xfail(strict=True, reason="estim_sigf overestimates the variance: it behaves "
+                                   "like (f + 2 sigma_r**2) / (ngroups - 1), while the scatter is closer "
+                                   "to f / (ngroups - 1) (consecutive differences share a read)")
+
+
+@pytest.mark.parametrize("flux, readnoise", [
+    (1_000., 5.), (1_000., 10.), (100., 5.),                       # photon-noise dominated: OK
+    pytest.param(100., 10., marks=VARIANCE_XFAIL),
+    pytest.param(10., 10., marks=VARIANCE_XFAIL),
+    pytest.param(1., 10., marks=VARIANCE_XFAIL),
+    pytest.param(1_000., 30., marks=VARIANCE_XFAIL),
+])
+def test_kubik_variance_matches_scatter(flux, readnoise):
+    """The returned variance matches the measured scatter of the flux (within 20 %)."""
+    times, data = kubik_mock(flux, readnoise)
+    res = Kubik2015(data, times=times).fit(readnoise=readnoise)
+    ratio = np.mean(res.var) / res.slope.var()
+    assert abs(ratio - 1) < 0.2, f"predicted / measured variance = {ratio:.2f}"
+
+
+def test_kubik_with_fit_ramp():
+    """fit_ramp(method='Kubik') runs and gives the same flux as calling Kubik2015 directly."""
+    from mercupix.fitter import fit_ramp
+    from mercupix.ramp import RawRamp
+
+    nref, size = 4, 16
+    times, active = kubik_mock(100., 10., shape=(size, size))
+    raw = np.full((times.size, size + 2 * nref, size + 2 * nref), 10_000.)
+    raw[:, nref:-nref, nref:-nref] += active - 1_000.                   # mock offset is 1000
+    ramp = RawRamp(raw.astype("uint16"), times, nchannels=4)
+
+    res = fit_ramp(ramp, method="Kubik", raw_ramp_kwargs=dict(data=ramp.get_rawdata()),
+                   fit_args=dict(readnoise=10.))                      # Kubik takes readnoise in fit()
+    assert res.slope.shape == (size, size)
+    assert abs(np.median(res.slope) / 100. - 1) < 0.05
+
+
+def test_kubik_get_model():
+    """After fit, get_model returns slope * times, and get_residuals data - model."""
+    times, data = kubik_mock(100., 10., shape=(8, 8))
+    kubik = Kubik2015(data, times=times)
+    kubik.fit(readnoise=10.)
+    model = kubik.get_model()
+    assert model.shape == data.shape
+    assert np.allclose(model, kubik.result.slope * times[:, None, None])
+    assert np.allclose(kubik.get_residuals(), data - model)

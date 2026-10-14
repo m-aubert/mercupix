@@ -28,7 +28,7 @@ def plot_frame(data, ax=None, clim=[1,99], **kwargs):
     if ax is None:
         fig, ax = plt.subplots()
     else:
-        fig = ax.figure()
+        fig = ax.figure
 
     vmin, vmax = np.nanpercentile(data.ravel(), clim)
 
@@ -64,7 +64,7 @@ def plot_ramp(data, x=None, ax=None, **kwargs):
     if ax is None:
         fig, ax = plt.subplots()
     else:
-        fig = ax.figure()
+        fig = ax.figure
 
     if x is None:
         ax.plot(data, **kwargs)
