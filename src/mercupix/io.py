@@ -1,6 +1,6 @@
 """Input/output functions for ramps and calibration products."""
 
-import numpy as np 
+import numpy as np
 from astropy.io import fits
 import h5py
 
@@ -22,10 +22,11 @@ def fetch_metadata(path=None):
     -----
     Not implemented yet: currently returns None.
     """
-    pass
+    raise NotImplementedError("Metadata fetching not implemented yet.")
+
 
 class Metadata:
-    
+
     """Calibration products and information needed to process a ramp.
 
     Parameters
@@ -39,7 +40,8 @@ class Metadata:
     """
     def __init__(filename):
         pass
-        
+
+
     def parse_filename(filename):
         """Parse a filename to get the information needed for queries.
 
@@ -52,7 +54,8 @@ class Metadata:
         -----
         Not implemented yet.
         """
-        pass
+        raise NotImplementedError("Filename parsing not implemented yet.")
+
 
     def query_metadata(param):
         """Query the metadata corresponding to a parameter.
@@ -71,18 +74,18 @@ class Metadata:
         Not implemented yet.
         """
         # Query nearest calib dark
-        # Query nearest calib flat     
-        # Query gain map (will probably be unique until better models come up) 
-        # Query previous acquisition filepath 
-        # Need to think of how format will look like. 
-        # Used to pandas dataframe but could be something else. 
+        # Query nearest calib flat
+        # Query gain map (will probably be unique until better models come up)
+        # Query previous acquisition filepath
+        # Need to think of how format will look like.
+        # Used to pandas dataframe but could be something else.
         # Query file with nl_coefs
         # Query file with IPC coefs
-        # Query file with BFE coefs 
-        # What else ? 
-        pass
-        
-    
+        # Query file with BFE coefs
+        # What else ?
+        raise NotImplementedError("Metadata querying not implemented yet.")
+
+
 def load_nl_coefficients(path=None):
     """Load the classical non-linearity correction coefficients.
 
@@ -101,12 +104,12 @@ def load_nl_coefficients(path=None):
     -----
     Loading from ``path`` is not implemented yet.
     """
-    if path is None : 
+    if path is None :
         return 0,0,0,0
 
-    else : 
-        pass 
-    
+    raise NotImplementedError("Non-linearity coefficients loading not implemented yet.")
+
+
 def load_downpix(path=None):
     """Load the disconnected pixel map from the characterization campaign.
 
@@ -125,7 +128,8 @@ def load_downpix(path=None):
     Not implemented yet: currently returns None.
     """
     # From carac, disconnected pixels mask / map
-    pass
+    raise NotImplementedError("Disconnected pixel map loading not implemented yet.")
+
 
 def load_bfe(path=None):
     """Load the brighter-fatter coefficients from the characterization campaign.
@@ -144,8 +148,8 @@ def load_bfe(path=None):
     -----
     Not implemented yet: currently returns None.
     """
-    # From carac, disconnected pixels mask / map
-    pass
+    raise NotImplementedError("BFE coefficients loading not implemented yet.")
+
 
 def load_ipc(path=None, nl=False):
     """Load the IPC coefficients from the characterization campaign.
@@ -166,11 +170,10 @@ def load_ipc(path=None, nl=False):
     -----
     Not implemented yet: currently returns None.
     """
-    # From carac, disconnected pixels mask / map
-    pass
+    raise NotImplementedError("IPC coefficients loading not implemented yet.")
 
 
-def load_gain_map(path=None): 
+def load_gain_map(path=None):
     """Load the gain map.
 
     Parameters
@@ -187,7 +190,8 @@ def load_gain_map(path=None):
     -----
     Not implemented yet: currently returns None.
     """
-    pass
+    raise NotImplementedError("Gain map loading not implemented yet.")
+
 
 def get_flatfield():
     """Load the master flat-field.
@@ -201,9 +205,9 @@ def get_flatfield():
     -----
     Not implemented yet: currently returns None.
     """
+    raise NotImplementedError("Flat-field loading not implemented yet.")
 
-    pass
-    
+
 def get_dark():
     """Load the master dark.
 
@@ -216,7 +220,8 @@ def get_dark():
     -----
     Not implemented yet: currently returns None.
     """
-    pass
+    raise NotImplementedError("Dark cube loading not implemented yet.")
+
 
 def get_qe_map():
     """Load the quantum efficiency map.
@@ -230,7 +235,8 @@ def get_qe_map():
     -----
     Not implemented yet: currently returns None.
     """
-    pass
+    raise NotImplementedError("Quantum efficiency map loading not implemented yet.")
+
 
 def get_previous_exposure(metadata):
     """Load the previous exposure, used to model and correct persistence.
@@ -246,8 +252,7 @@ def get_previous_exposure(metadata):
     object
         Previous exposure, as returned by `load_data`.
     """
-
-    return load_data(metadata['path']) 
+    return load_data(metadata['path'])
 
 
 def load_data(filepath):
@@ -269,8 +274,8 @@ def load_data(filepath):
     -----
     Placeholder: currently returns 0.
     """
-    data=0
-    return data
+    raise NotImplementedError("Data loading not implemented yet.")
+
 
 def load_hotpix(filepath):
     """Load the hot and warm pixel map.
@@ -289,12 +294,11 @@ def load_hotpix(filepath):
     -----
     Placeholder: currently returns 0.
     """
-    return 0 
-    
-## -------------- ##
-## RAMP I/O Utils ##
-## -------------- ##
+    raise NotImplementedError("Hot pixel map loading not implemented yet.")
 
+# -------------- #
+# RAMP I/O Utils #
+# -------------- #
 def from_roman(filename):
     """Read a ramp in Roman flight-like format.
 
@@ -318,16 +322,16 @@ def from_roman(filename):
     times : ndarray
         Time of each group, of shape ``(ngroups,)``, as float32.
     """
-    with fits.open(filename) as hdul: 
+    with fits.open(filename) as hdul:
         header = hdul[0].header
-        data = np.squeeze(hdul[1].data)[:,:,:-128] 
+        data = np.squeeze(hdul[1].data)[:,:,:-128]
         tframe = header['TFRAME']
         tgroup = header['TGROUP']
         nchannels = header['NOUTPUTS']
         times  = np.linspace(header['TGROUP'], header['XPOSURE'], num=header['NGROUPS'])
-            
+
     return  data , tframe, tgroup, nchannels, times.astype("float32")
-    
+
 def from_pyxim(filename):
     """Read a ramp in pyxim simulation format.
 
@@ -349,11 +353,11 @@ def from_pyxim(filename):
     times : ndarray
         Readout time of each group, of shape ``(ngroups,)``, as float32.
     """
-    with fits.open(filename) as hdul : 
+    with fits.open(filename) as hdul :
         data = hdul[0].data
         times = hdul[1].data['readout_times'].astype("float32")
         nchannels = hdul[0].header['NCHAN']
-                   
+
     tframe = np.diff(times).mean()
     tgroup = np.diff(times).mean()
     return data, tframe, tgroup, nchannels, times.astype("float32")
@@ -389,38 +393,36 @@ def from_ip2i(filename, frame_path='/run/seq_1/asic_1/ramp_1/frames', time_arr_p
     times : ndarray
         Time of each group, ``(1, 2, ..., ngroups) * tframe``, as float32.
     """
-    f = h5py.File(filename, 'r')
-
-    if time_arr_path is None : 
+    if time_arr_path is None :
         time_arr_path = '/'.join(frame_path.split('/')[:2])+'/env_measures/'
 
     npix_channel = 64
-    data = f[frame_path][()][:,:,npix_channel:] 
-    tarr = f[time_arr_path]['time'].astype("float32") 
+
+    with h5py.File(filename, 'r') as f:
+        data = f[frame_path][()][:, : ,npix_channel:]
+        tarr = f[time_arr_path]['time'].astype("float32")
 
     tframe = np.diff(tarr).mean()
     times = np.arange(1, data.shape[0]+1)*tframe
     nchannels=32
-    tgroup = None 
+    tgroup = None
 
     return data, tframe, tgroup, nchannels, times.astype("float32")
 
 
-# Generic functions for other data.
-def from_anyfits(filename): 
+def from_anyfits(filename, ext=0):
     """Read the primary HDU data of any FITS file.
 
     Parameters
     ----------
     filename : str
         Path to the FITS file.
+    ext: int, optional
+        Extension of the HDU to read. Default is 0 (primary HDU).
 
     Returns
     -------
     ndarray
-        Data of the primary HDU.
+        Data of the HDU.
     """
-    with fits.open(filename) as hdul : 
-        data = hdul[0].data
-
-    return data
+    return fits.getdata(filename, ext=ext)

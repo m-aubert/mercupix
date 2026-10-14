@@ -1,9 +1,9 @@
 """Processing of raw up-the-ramp data prior to ramp fitting."""
+import warnings
 import numpy as np
-import skimage as ski
 from .baseramp import BaseRamp
-  
-class RawRamp(BaseRamp):   
+
+class RawRamp(BaseRamp):
     """Raw ramp with the corrections applied before ramp fitting.
 
     Provides reference pixel, offset, dark, non-linearity and IPC
@@ -14,8 +14,7 @@ class RawRamp(BaseRamp):
     --------
     mercupix.baseramp.BaseRamp
     """
-
-    def _from_header_to_metadata(header): 
+    def _from_header_to_metadata(header):
         """Extract the processing metadata from a file header.
 
         Parameters
@@ -33,125 +32,45 @@ class RawRamp(BaseRamp):
         -----
         Not implemented yet: currently returns None.
         """
-        pass 
+        raise NotImplementedError("Metadata extraction from header not implemented yet.")
 
-    @property
-    def metadata(self): 
-        """Metadata of the ramp. Currently always None."""
-        return None
-        
-    def correct_refpix(self, data=None, **kwargs):
-        """Apply the reference pixel correction.
 
-        Parameters
-        ----------
-        data : ndarray, optional
-            Datacube of shape ``(ngroups, ny, nx)`` to correct. If None,
-            ``data`` is used. Default is None.
-        **kwargs
-            Passed to `get_refpix_map`.
+    def get_rawdata(self):
+        """ explicite raw data function """
+        # note for letter: we may want it to be a copy.
+        return self.data
 
-        Returns
-        -------
-        ndarray
-            Reference pixel subtracted datacube. Its shape is
-            ``(ngroups, ny_act, nx_act)`` when ``data`` is None.
+    def append_refpix_to_data(self, data, method="rawdata"):
+        """ """
+        import numbers
+        # which reference pixels ?
+        if method in ["exact", "rawdata"]:
+            full_with_ref = self.get_rawdata()
+        elif isinstance(method, numbers.Real):
+            full_with_ref = np.ones( self.data.shape ) * method
+        else:
+            raise ValueError(f"method={method} not recognized. Use 'rawdata' or any number.")
 
-        See Also
-        --------
-        mercupix.baseramp.BaseRamp.get_refpix_map
-        """
-        if data is None : 
-            return  self.data[:, self.actslice, self.actslice] - self.get_refpix_map(**kwargs)
-        else : 
-            return data - self.get_refpix_map(data=data, **kwargs)   
-        
-    def subtract_offset(self,
-                        data=None, 
-                        metadata={},
-                        offset=0):
-        """Subtract an offset (bias or superbias) frame or cube.
-
-        Parameters
-        ----------
-        data : ndarray, optional
-            Datacube to correct. If None, the output of `correct_refpix` is
-            used. Default is None.
-        metadata : dict, optional
-            Metadata with the path to the external dark under the ``'dark'``
-            key. Default is ``{}``.
-        offset : float or ndarray or None, optional
-            Offset to subtract. If None, it is loaded from ``metadata``, or
-            set to the first group of ``data`` if ``metadata`` is empty.
-            Default is 0.
-
-        Returns
-        -------
-        ndarray
-            Offset subtracted datacube.
-        """
-        if data is None : 
-            data = self.correct_refpix()
-
-        if offset is None: 
-            if not metadata: 
-                offset = data[0,:,:]
-            else : 
-                from .io import get_bias
-                offset = get_bias(metadata['dark'])
-                
-        return data - offset
-        
-    def correct_dark(self, 
-                     data=None, 
-                     metadata={}, 
-                     darkdata=None):
-        """Subtract the dark current.
-
-        Parameters
-        ----------
-        data : ndarray, optional
-            Datacube to correct. If None, the output of `correct_refpix` is
-            used. Default is None.
-        metadata : dict, optional
-            Metadata with the path to the external dark under the ``'dark'``
-            key. Default is ``{}``.
-        darkdata : ndarray, optional
-            Dark to subtract. If 2D, it is a dark rate multiplied by `times`
-            before subtraction. If 3D, it is a dark cube subtracted as is.
-            Default is None.
-
-        Returns
-        -------
-        ndarray
-            Dark subtracted datacube.
-        """
-        
-        if data is None : 
-            data = self.correct_refpix()        
-            
-        if darkdata is None:
-            darkdata = np.atleast_1d(0)
-            
-        elif bool(metadata): 
-            from .io import get_dark
-            darkdata = get_dark(metadata['dark'])
-        
-        if darkdata.ndim == 2:
-            return data - darkdata*self.times[:,None,None] 
-        else : 
-            return data - darkdata
- 
-        
+        # let's add that to current data.
+        data = np.column_stack([full_with_ref[:, :4, self.actslice],
+                                data,
+                                full_with_ref[:,-4:, self.actslice]])
+        data = np.dstack([full_with_ref[:,:,:4],
+                          data,
+                          full_with_ref[:,:, -4:]])
+        return data
+    # ----------- #
+    #   GETTER    #
+    # ----------- #
     def get_mask(self, data=None,
-                 disconnected=True,
-                 cosmics=False, 
-                 saturated=False,
-                 hot=False,
-                 charge_migration=False,
-                 sat_threshold=1.,
-                 inpaint=False,
-                 cr_threshold_mad=9): 
+                disconnected=True,
+                cosmics=False,
+                saturated=False,
+                hot=False,
+                charge_migration=False,
+                sat_threshold=1.,
+                inpaint=False,
+                cr_threshold_mad=7):
         """Build the data quality bitmask of the ramp.
 
         Flag values are defined in ``mercupix.mask._BITFLAGS_DICT``.
@@ -160,12 +79,13 @@ class RawRamp(BaseRamp):
         ----------
         data : ndarray, optional
             Processed datacube of shape ``(ngroups, ny_act, nx_act)`` used
-            for the jump detection. Default is None.
+            for the jump detection (cosmics). Default is None.
+            If data=None and cosmics=True, cosmics will be ignored.
         disconnected : bool, optional
             Whether to flag disconnected (dead) pixels. Default is True.
         cosmics : bool, optional
-            Whether to flag jumps (cosmic rays) in the ramp. Default is
-            False.
+            Whether to flag jumps (cosmic rays) in the ramp.
+            If True, data= is required. Default is False.
         saturated : bool, optional
             Whether to flag saturated pixels. Default is False.
         hot : bool, optional
@@ -183,7 +103,7 @@ class RawRamp(BaseRamp):
             False.
         cr_threshold_mad : float, optional
             Jump detection threshold, in units of the normalized median
-            absolute deviation. Default is 9.
+            absolute deviation. Default is 7.
 
         Returns
         -------
@@ -203,47 +123,150 @@ class RawRamp(BaseRamp):
         from .mask import _MASK_DTYPE
 
         mask = np.zeros(self.active_shape, dtype=_MASK_DTYPE)
-        
-        if disconnected : 
+
+        # we do not do "inplace mask += ..." because the dimension may increase (2D => 3D)
+        if disconnected:
             from .mask import get_downpix
-            path = None if self.metadata is None else self.metadata['path']['DIS'] 
-            mask += get_downpix(path=path)
-        
-        if hot : 
-            from .mask import get_hotpix 
-            # flag hot and warm 
-            path = None if self.metadata is None else self.metadata['path']['HOT'] 
-            mask += get_hotpix(path=path)
-                        
-        if saturated: 
+            path = None if self.metadata is None else self.metadata['path']['DIS']
+            mask = mask | get_downpix(path=path)
+
+        if hot:
+            from .mask import get_hotpix
+            # flag hot and warm
+            path = None if self.metadata is None else self.metadata['path']['HOT']
+            mask = mask | get_hotpix(path=path)
+
+        if saturated or charge_migration:
+            if not saturated:
+                warnings.warn("charge_migration requires saturated=True, doing saturatation.")
+
             from .mask import get_saturated
             # raw uint16 input, expands mask dims here.
             # Explicit sum cause inplace add does not broadcast.
-            sat_mask = get_saturated(self.data, #Specifically use int raw data for saturation.
-                                  sat_threshold=sat_threshold)[:, self.actslice, self.actslice] 
-        
-            mask = mask + sat_mask
-            
-        if charge_migration : 
+            # => Specifically use int raw data for saturation.
+            sat_mask = get_saturated(self.get_rawdata(),
+                                    sat_threshold=sat_threshold
+                                    )[:, self.actslice, self.actslice]
+            if saturated:
+                mask = mask | sat_mask
+
+        if charge_migration :
             from .mask import get_charge_migration
             mask_cm = get_charge_migration(sat_mask)
-            
-            mask = mask + mask_cm
+            mask = mask | mask_cm
 
-        if cosmics : 
-            from .mask import get_cosmics
-            maskjump , data = get_cosmics(data=data, 
-                                cr_threshold_mad=cr_threshold_mad,
-                                inpaint=inpaint)
-            
-            mask = mask + maskjump #For some dtype, inplace sum does not work. Document for next time.
-                        
+        if cosmics:
+            if data is None:
+                warnings.warn("cosmics=True but no data provided, skipping jump detection.")
+            else:
+                from .mask import get_cosmics
+                maskjump, data = get_cosmics(data=data,
+                                            cr_threshold_mad=cr_threshold_mad,
+                                            inpaint=inpaint)
+                mask = mask | maskjump
+
         return mask, data
-        
-    def correct_ipc(self, data=None, 
-                          nl=False, 
-                          metadata={}, 
-                          ipckernel=np.ones((1,5,5)), dtype='float32'):
+
+    # ----------- #
+    #   CORRECT   #
+    # ----------- #
+    def correct_refpix(self, data, **kwargs):
+        """Apply the reference pixel correction.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            raw data.
+        **kwargs
+            Passed to `get_refpix_map`.
+
+        Returns
+        -------
+        ndarray
+            Reference pixel subtracted datacube. Its shape is
+            ``(ngroups, ny_act, nx_act)`` when ``data`` is None.
+
+        See Also
+        --------
+        mercupix.baseramp.BaseRamp.get_refpix_map
+        """
+        # reference pixels included. Need to get rid of them.
+        if data.shape == self.data.shape:
+            return data[:, self.actslice, self.actslice] - self.get_refpix_map(**kwargs)
+
+        return data - self.get_refpix_map(**kwargs)
+
+
+    def subtract_offset(self, data, metadata={}, offset=0):
+        """Subtract an offset (bias or superbias) frame or cube.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            Datacube to correct. Expected: output of `correct_refpix`.
+        metadata : dict, optional
+            Metadata with the path to the external dark under the ``'dark'``
+            key. Default is ``{}``.
+        offset : float or ndarray or None, optional
+            Offset to subtract. If None, it is loaded from ``metadata``, or
+            set to the first group of ``data`` if ``metadata`` is empty.
+            Default is 0.
+
+        Returns
+        -------
+        ndarray
+            Offset subtracted datacube.
+        """
+        if offset is None:
+            if not metadata:
+                offset = data[0, :, :]
+            else:
+                from .io import get_bias
+                offset = get_bias(metadata['dark'])
+
+        return data - offset
+
+    def correct_dark(self, data, metadata={}, darkdata=None):
+        """Subtract the dark current.
+
+        Parameters
+        ----------
+        data : ndarray, optional
+            Datacube to correct. Expected output of `correct_refpix`.
+        metadata : dict, optional
+            Metadata with the path to the external dark under the ``'dark'``
+            key. Default is ``{}``.
+        darkdata : ndarray, optional
+            Dark to subtract. If 2D, it is a dark rate multiplied by `times`
+            before subtraction. If 3D, it is a dark cube subtracted as is.
+            Default is None.
+
+        Returns
+        -------
+        ndarray
+            Dark subtracted datacube.
+        """
+        # has nothing | darkdata is null
+        if darkdata is None and not metadata:
+            darkdata = np.atleast_1d(0)
+
+        # no darkdata but metadata
+        elif darkdata is None:
+            from .io import get_dark
+            darkdata = get_dark(metadata['dark'])
+
+        # has both darkdata and metadata | warnings issued.
+        elif darkdata and metadata:
+            warnings.warn("darkdata and metadata have been given. darkdata favored, metadata ignored.")
+
+        if darkdata.ndim == 2:
+            return data - darkdata * self.times[:, None, None]
+
+        return data - darkdata
+
+    def correct_ipc(self, data,
+                        ipckernel=None,
+                        dtype='float32'):
         """Deconvolve the IPC kernel, frame by frame.
 
         The deconvolution uses 5 iterations of the Richardson-Lucy
@@ -261,8 +284,8 @@ class RawRamp(BaseRamp):
             Metadata with the path to the IPC coefficients under the
             ``'ipc'`` key. Default is ``{}``.
         ipckernel : ndarray or None, optional
-            IPC kernel to deconvolve, of shape ``(1, k, k)``. If None, it is
-            loaded from ``metadata``. Default is ``np.ones((1, 5, 5))``.
+            IPC kernel to deconvolve, of shape ``(1, k, k)``.
+            default is ``np.ones((1, 5, 5))``.
         dtype : str, optional
             Unused. Default is ``'float32'``.
 
@@ -281,30 +304,25 @@ class RawRamp(BaseRamp):
         This is currently the main bottleneck of the pipeline; its cost
         increases with the number of groups.
         """
-        
-        if ipckernel is None : 
-            from .io import load_ipc
-            from .calib import ipc_kernel 
-            
-            # Will probably define a kernel model (3x3) or (5x5).
-            ipckernel = ipc_kernel(load_ipc(metadata['ipc'], nl=nl))
+        from skimage.restoration import richardson_lucy
+        if ipckernel is None :
+            ipckernel = np.ones( (1, 5, 5) )
 
         pad_ = int(np.ceil(ipckernel.shape[-1]/2))
-                    
-        data = np.pad(data.astype('float64'), #float64 to avoid overflow during deconv.
-                      {1:pad_, 2: pad_},  #Padding to avoid overflow on borders.
-                      constant_values=0)  
-        data = ski.restoration.richardson_lucy(data, 
-                                               ipckernel, 
-                                               num_iter=5, #Low iter number otherwise degrade img quality.
-                                               clip=False)
-        
-        return data[:, pad_:-pad_, pad_:-pad_].astype("float32")
-        
-            
-    def correct_nl(self, data=None, 
-                         metadata={},
-                         nl_coefficients=None):
+
+        # float64 to avoid overflow during deconv.
+        # Padding to avoid overflow on borders.
+        data = np.pad(data.astype('float64'), {1:pad_, 2: pad_}, constant_values=0)
+        data = richardson_lucy(data, ipckernel,
+                                num_iter=5, #Low iter number otherwise degrade img quality.
+                                clip=False)
+
+        return data[:, pad_:-pad_, pad_:-pad_].astype(dtype)
+
+
+    def correct_nl(self, data,
+                    metadata={},
+                    nl_coefficients=None):
         """Correct the classical non-linearity.
 
         The linearized data are ``data * (1 + sum_i c_i * data**i)``, with
@@ -331,20 +349,18 @@ class RawRamp(BaseRamp):
         --------
         mercupix.carac.ClassicalNL.get_nlcorr
         """
-        
-        if nl_coefficients is None : 
+        if nl_coefficients is None :
             from .io import load_nl_coefficients
-            
             nl_coefficients = load_nl_coefficients(path=metadata['nl'])
-        
+
         correction_term = 1
-        for i, coef in enumerate(nl_coefficients): 
-            correction_term += coef*data**i 
-        
+        for i, coef in enumerate(nl_coefficients):
+            correction_term += coef*data**i
+
         return (data*correction_term).astype("float32") #Forcing type for memory management.
-        
-    
-    def get_variance(self,data=None):  
+
+
+    def get_variance(self, data=None):
         """Estimate the per-pixel variance of the count rate.
 
         The variance is computed over the group differences divided by the
@@ -366,33 +382,32 @@ class RawRamp(BaseRamp):
         Whether a temporal or per-pixel variance is needed is still to be
         decided.
         """
-        
         #Clarifier ce qu'on veut. Variance temporelle ou variance par pixel ?
         var = 0
-        if data is not None : 
-            var = np.diff(data, axis=0) 
-            var /=np.diff(self.times)[:,None,None]
-            var = np.var(var,ddof=1, axis=0)
-        
+        if data is not None :
+            var = np.diff(data, axis=0) / np.diff(self.times)[:, None, None]
+            var = np.var(var, ddof=1, axis=0)
+
         return var
-        
-    
-    def preprocess_ramp(self,           
-                        data= None, 
-                        corr_refpix=True,
-                        corr_ipc=False,
-                        corr_offset=False,
-                        corr_dark=False, 
-                        corr_nl=False, 
-                        corr_cosmics=False,
-                        mask=False,
-                        comp_var=False,
-                        mask_kwargs={},
-                        metadata={},
-                        nl_coefficients=None,
-                        ipckernel=np.ones((5,5)),
-                        darkdata=None,
-                        offset=0):
+
+    #
+    # This is the top level functionality
+    #
+    def preprocess_ramp(self, data=None,
+                            corr_refpix=True,
+                            corr_ipc=False,
+                            corr_offset=False,
+                            corr_dark=False,
+                            corr_nl=False,
+                            corr_cosmics=False,
+                            mask=False,
+                            comp_var=False,
+                            mask_kwargs={},
+                            metadata={},
+                            nl_coefficients=None,
+                            ipckernel=None,
+                            darkdata=None,
+                            offset=0):
         """Apply the corrections required before fitting the ramp.
 
         The corrections are applied in the following order: reference
@@ -429,8 +444,8 @@ class RawRamp(BaseRamp):
             Non-linearity coefficients, used if ``corr_nl=True``. See
             `correct_nl`. Default is None.
         ipckernel : ndarray, optional
-            IPC kernel, used if ``corr_ipc=True``. Default is
-            ``np.ones((5, 5))``.
+            IPC kernel, used if ``corr_ipc=True``. Default is None,
+            which leads to ``np.ones((5, 5))``.
         darkdata : ndarray, optional
             Dark rate (2D) or dark cube (3D), used if ``corr_dark=True``. A
             2D dark is multiplied by `times` before subtraction. Default is
@@ -448,47 +463,62 @@ class RawRamp(BaseRamp):
             Data quality bitmask from `get_mask`. If ``mask`` is False,
             an array of zeros with the shape of ``datacube``.
         """
-        if corr_refpix : 
-            data = self.correct_refpix(data=data)
+        if data is None:
+            data = self.get_rawdata()
 
-        if data is None : 
+        if corr_refpix:
+            # correct refpix includes the reshaping
+            data = self.correct_refpix(data)
+        else:
             data = self.data[:, self.actslice, self.actslice].astype("float32")
-                                
-        if corr_offset :             
-            data = self.subtract_offset(data=data,
+
+        if corr_offset:
+            data = self.subtract_offset(data,
                                         metadata=metadata,
                                         offset=offset) #Basically bias here.
-        if corr_nl : 
-            data= self.correct_nl(data=data,
-                                       metadata=metadata,
-                                       nl_coefficients=nl_coefficients)
-        
-        if corr_ipc : 
-            data= self.correct_ipc(data=data,
-                                metadata=metadata,
-                                ipckernel=ipckernel)
 
-        if corr_dark : 
-            data= self.correct_dark(data=data,
+        if corr_nl:
+            data = self.correct_nl(data,
                                     metadata=metadata,
-                                    darkdata=darkdata)
-        
-        if comp_var : 
+                                    nl_coefficients=nl_coefficients)
+
+        if corr_ipc:
+            data = self.correct_ipc(data,
+                                     # metadata=metadata, # no metadata in correct_ipc
+                                     ipckernel=ipckernel)
+
+        if corr_dark:
+            data = self.correct_dark(data,
+                                     metadata=metadata,
+                                     darkdata=darkdata)
+
+        if comp_var:
             varcube = self.get_variance(data=data) # Unclear when and what
         else:
-            varcube=0
+            varcube = 0
 
-        if mask: 
-            mask, data = self.get_mask(data=data, inpaint=corr_cosmics, **mask_kwargs)
-            
-        else : 
-            if corr_cosmics : 
-                from .mask import get_cosmics
-                _, data = get_cosmics(data=data, inpaint=corr_cosmics, 
-                                      cr_threshold_mad=mask_kwargs.pop('cr_threshold_mad', 7))
-                
-            mask = np.zeros(data.shape, dtype=np.int8) 
+        # get_mask can correct cosmic ray pixels.
+        if mask and corr_cosmics:
+            mask, data = self.get_mask(data=data, inpaint=corr_cosmics,
+                                       **mask_kwargs)
+        elif corr_cosmics:
+            from .mask import get_cosmics
+            cr_threshold_mad = mask_kwargs.get('cr_threshold_mad', 7)
+            _, data = get_cosmics(data=data, inpaint=corr_cosmics,
+                                  cr_threshold_mad=cr_threshold_mad)
+            # no mask requested
+            mask = np.zeros(data.shape, dtype=np.int8)
+        else:
+            # cosmic ray removal.
+            # no mask requested
+            mask = np.zeros(data.shape, dtype=np.int8)
 
         return (data, varcube, mask)
-        
-    
+
+    # ============== #
+    # properties     #
+    # ============== #
+    @property
+    def metadata(self):
+        """Metadata of the ramp. Currently always None."""
+        return None

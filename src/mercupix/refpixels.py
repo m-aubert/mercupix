@@ -4,6 +4,7 @@ The correction is split in an up-down part (per-channel offset estimated
 from the top and bottom reference rows) and a left-right part (per-row
 offset estimated from the left and right reference columns).
 """
+import warnings
 import numpy as np
 from scipy.signal import savgol_filter
 
@@ -35,10 +36,10 @@ def get_refpix_ud(ud_refpix, nframes, nchannel, npix_channel, npix_ref=4):
     """
     npix_ref_both_side = npix_ref * 2
     ud_corr = np.mean(ud_refpix.reshape(nframes, npix_ref_both_side, nchannel, npix_channel),
-                    axis=(1,3)) 
-    return np.repeat(ud_corr, npix_channel, axis=1).astype(np.float32) 
-    
-    
+                    axis=(1,3))
+    return np.repeat(ud_corr, npix_channel, axis=1).astype(np.float32)
+
+
 def get_refpix_lr(lr_refpix, npix_channel, polyorder=3, red_fac=0.875, npix_ref=4):
     """Estimate the left-right reference pixel correction.
 
@@ -76,12 +77,9 @@ def get_refpix_lr(lr_refpix, npix_channel, polyorder=3, red_fac=0.875, npix_ref=
     lr_corr = np.concatenate([lr_refpix[:, npix_ref:-npix_ref, :npix_ref],
                               lr_refpix[:, npix_ref:-npix_ref, -npix_ref:]],
                               axis=2 ).mean(axis=2)
-    
+    if npix_channel > 128:
+        warnings.warn(f"npix_channel={npix_channel} > 128, capping to 128 for smoothing window length.")
+        npix_channel = 128
+
     window_length = int(red_fac*npix_channel)
-    if window_length > 128 : 
-        window_length = int(red_fac*128)
-        
-    return np.asarray( list( map(lambda x : savgol_filter(x,
-                                                        window_length=window_length, 
-                                                        polyorder=polyorder).astype(np.float32), lr_corr)
-                            ))
+    return np.asarray( [ savgol_filter(lr_corr_, window_length=window_length, polyorder=polyorder).astype("float32") for lr_corr_ in lr_corr])

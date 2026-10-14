@@ -27,9 +27,17 @@ return, how to call them and when to use them.
 
       Up-down / left-right correction or SIRS-like Fourier correction.
 
+   .. grid-item-card:: :octicon:`checklist;1.2em` Ramp fitting: validation
+      :link: ramp_fitting_validation
+      :link-type: doc
+
+      How the fitters are tested: frame times from 0.5 to 15 s, skipped
+      frames, non-linearity.
+
 .. toctree::
    :hidden:
 
    ramp_fitting
+   ramp_fitting_validation
    jumps
    refpix

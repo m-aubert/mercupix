@@ -18,3 +18,4 @@ Every module of ``mercupix``, with all its content.
    mercupix.calib
    mercupix.io
    mercupix.utils
+   mercupix.mock

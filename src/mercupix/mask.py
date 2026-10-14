@@ -14,13 +14,12 @@ Each flag is a power of two, defined in ``_BITFLAGS_DICT``:
 - ``NL`` (256): non-linearity issue,
 - ``RTN`` (512): random telegraph noise.
 """
-import numpy as np 
+import numpy as np
 import warnings
-import bottleneck as bn 
-from scipy.stats import median_abs_deviation
+
 from astropy.nddata.bitmask import bitfield_to_boolean_mask
 
-_MASK_DTYPE = 'uint32' 
+_MASK_DTYPE = 'uint32'
 _BITFLAGS_DICT = dict(GOOD=0,
                       DIS=2**0, # Disconnected but might change to DEAD.
                       CR=2**1, # Cosmic rays but might change to JUMP.
@@ -74,46 +73,63 @@ def get_saturated(data=None, sat_threshold=1):
         Bitmask with the shape of ``data``, set to ``SATURATED`` where
         ``data >= sat_threshold * 65535``.
     """
-    saturated_pixels = np.zeros(data.shape, dtype=_MASK_DTYPE) 
+    saturated_pixels = np.zeros(data.shape, dtype=_MASK_DTYPE)
     mask = data >= int(sat_threshold*65535)
     saturated_pixels[mask] = _BITFLAGS_DICT['SATURATED']
-    
+
     return saturated_pixels
 
 def get_charge_migration(mask, kernel=None):
     # Assume that mask will be issued directly from saturated pixels.
-    """Flag the neighbors of saturated pixels as charge migration candidates.
+    """Flag the neighbours of saturated pixels as charge migration candidates.
 
-    The flagged pixels are dilated with ``kernel`` and the new pixels are
-    set to ``CM``.
+    The flagged pixels of ``mask`` are dilated with ``kernel``, group by
+    group, and the pixels added by the dilation are set to ``CM``.
 
     Parameters
     ----------
     mask : ndarray
-        Saturation bitmask, as returned by `get_saturated`. Modified in
-        place.
+        Saturation bitmask of shape ``(ngroups, ny, nx)``, as returned by
+        `get_saturated`. Any non-zero value is treated as saturated. Not
+        modified.
     kernel : ndarray, optional
-        Structuring element of the dilation. If None, a 3x3 kernel with
-        full connectivity is used. Default is None.
+        2D structuring element of the dilation. If None, a 3x3 kernel with
+        full connectivity (the 8 neighbours) is used. Default is None.
 
     Returns
     -------
     ndarray
-        Input ``mask`` with the charge migration candidates set to ``CM``.
+        New bitmask with the shape of ``mask``, set to ``CM`` on the
+        neighbours of the flagged pixels and 0 elsewhere (the flagged
+        pixels themselves are not set). Combine it with the saturation mask
+        using ``|``.
 
     See Also
     --------
+    get_saturated
     scipy.ndimage.binary_dilation
     """
+
+
     from scipy.ndimage import binary_dilation, generate_binary_structure
-    
-    if kernel is None : 
-        kernel = generate_binary_structure(2, 2)    
-    new_mask = binary_dilation(mask, kernel, axes=(1,2))
-    new_mask[mask.astype(bool)] = False
-    
-    mask[new_mask.astype(bool)] = _BITFLAGS_DICT['CM']
-    return mask
+
+    if kernel is None :
+        kernel = generate_binary_structure(2, 2)
+
+    # Old from Marie. Is that change ok ? if so rm commented lines.
+    #new_mask = binary_dilation(mask, kernel, axes=(1,2))
+    #new_mask[mask.astype(bool)] = False
+    #mask[new_mask.astype(bool)] = _BITFLAGS_DICT['CM']
+
+    saturated = (mask & _BITFLAGS_DICT["SATURATED"]).astype(bool)
+    neighbours = binary_dilation(saturated, kernel, axes=(1,2)) & ~saturated
+    cm_mask = np.zeros(mask.shape, dtype=_MASK_DTYPE)
+    cm_mask[neighbours] = _BITFLAGS_DICT['CM']
+
+    return cm_mask
+
+
+
 
 def get_downpix(path=None):
     """Get the disconnected (dead) pixel map.
@@ -136,21 +152,19 @@ def get_downpix(path=None):
     """
     from .io import load_downpix
 
-    if path is not None : 
+    if path is not None :
         mask = load_downpix(path=path)
-    else : 
-        warnings.warn('No disconnected pixel map provided. \n No DIS Mask.')
+    else:
+        warnings.warn('No disconnected pixel map provided. No DIS Mask.')
         mask = 0
-                
+
     return mask
 
-def get_hotpix(data=None, path=None, **kwargs):
+def get_hotpix(path=None, **kwargs):
     """Get the known hot and warm pixel map.
 
     Parameters
     ----------
-    data : ndarray, optional
-        Unused. Default is None.
     path : str, optional
         Path to the hot pixel map, from the metadata. If None, a warning is
         issued and no pixel is flagged. Default is None.
@@ -170,133 +184,145 @@ def get_hotpix(data=None, path=None, **kwargs):
     """
     # Boolean
     # Get noisy pixels as bitmap or as boolean ?
-    
-    if path is not None : 
+
+    if path is not None :
         from .io import load_hotpix
         mask = load_hotpix(path)
-    else : 
+    else :
         warnings.warn("No hot pixel map provided. \n"+ \
                       "No HOT and WARM Mask.")
         mask = 0
-         
+
     return mask
 
-def get_zscores(data, threshold_mad=9, threshold_std=5):
-    """Flag outliers along the first axis.
+def _nan_reference(diff, window_length):
+    """Leave-one-out moving median along axis 0, ignoring NaNs. ``diff``: (ndiff, npix)."""
+    w = window_length
+    padded = np.pad(diff, ((w, w), (0, 0)), mode="reflect")          # NumPy "reflect" = SciPy "mirror"
+    windows = np.lib.stride_tricks.sliding_window_view(padded, 2 * w + 1, axis=0)  # (ndiff, npix, 2w+1)
+    windows = np.delete(windows, w, axis=-1)                           # leave the tested difference out
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)                # windows with only NaNs
+        return np.nanmedian(windows, axis=-1)
 
-    A value is an outlier if its deviation from the median along the first
-    axis exceeds both ``threshold_mad`` normalized median absolute
-    deviations and ``threshold_std`` standard deviations.
-
-    Parameters
-    ----------
-    data : ndarray
-        Data of shape ``(n, ...)``, e.g. group differences.
-    threshold_mad : float, optional
-        Threshold in units of the normalized median absolute deviation.
-        Default is 9.
-    threshold_std : float, optional
-        Threshold in units of the standard deviation. Default is 5.
-
-    Returns
-    -------
-    ndarray
-        Boolean mask with the shape of ``data``, True for outliers.
-    """
-    z_mad = (data - np.nanmedian(data, axis=0, keepdims=True))
-    z_std = z_mad/np.nanstd(data,axis=0, ddof=1, keepdims=True)
-    
-    z_mad /=median_abs_deviation(data, scale='normal', nan_policy='omit', axis=0)
-    
-    mask = (z_mad >= threshold_mad) & (z_std >= threshold_std)
-    return mask
-
-def get_window(data, stat_func='median', window_length=5, min_count=1, axis=0):
-    """Compute z-scores relative to a moving statistic.
-
-    Parameters
-    ----------
-    data : ndarray
-        Input data, e.g. group differences.
-    stat_func : str, optional
-        Moving statistic, as named in ``bottleneck`` (``'median'``,
-        ``'mean'``, ...). Default is ``'median'``.
-    window_length : int, optional
-        Length of the moving window. Default is 5.
-    min_count : int, optional
-        Minimum number of non-NaN values in a window. Default is 1.
-    axis : int, optional
-        Axis along which the window moves. Default is 0.
-
-    Returns
-    -------
-    zscore : ndarray
-        Deviation of ``data`` from the moving statistic, in units of the
-        normalized median absolute deviation along ``axis``.
-    rolled_stat : ndarray
-        Moving statistic, with the shape of ``data``.
-    """
-    window = getattr(bn.move, f'move_{stat_func}')
-    rolled_stat = window(data, window=window_length, min_count=min_count, axis=axis)
-
-    zscore = (data - rolled_stat)/median_abs_deviation(data, scale='normal', nan_policy='omit', axis=axis)
-    
-    return zscore, rolled_stat
-
-def get_cosmics(data, inpaint=True, cr_threshold_mad=7):
+def get_cosmics(data, inpaint=True, cr_threshold_mad=7, window_length=5,
+                saturated=None, min_valid=6):
     """Detect, and optionally correct, the jumps (cosmic rays) in a ramp.
 
-    Jumps are detected as outliers in the group differences, relative to a
-    moving median of 5 differences. Outliers in the first group are
-    detected by sigma clipping across the frame.
+    A jump shows up as one group difference much larger than its
+    neighbours. Each group difference is compared with a reference level,
+    the median of the ``window_length`` differences on each side of it
+    (the tested difference itself is excluded). The residuals are expressed
+    in units of their robust scatter (normalized median absolute deviation,
+    per pixel), and those above ``cr_threshold_mad`` are flagged ``CR`` on
+    the group where the jump appears.
 
     Parameters
     ----------
     data : ndarray
-        Datacube of shape ``(ngroups, ny, nx)``.
+        Datacube of shape ``(ngroups, ny, nx)``. Integer input (e.g. raw
+        uint16) is converted to float32.
     inpaint : bool, optional
-        Whether to replace the flagged differences by the moving median and
-        rebuild the ramp. Default is True.
+        Whether to replace the flagged differences by their reference level
+        and rebuild the ramp from the first group. Default is True.
     cr_threshold_mad : float, optional
         Detection threshold, in units of the normalized median absolute
-        deviation. Default is 7.
+        deviation of the residuals. Default is 7.
+    window_length : int, optional
+        Number of differences taken on **each side** of the tested one to
+        build its reference level, i.e. a window of ``2 * window_length + 1``
+        differences. Larger values give a less noisy reference; smaller
+        values follow a flux that changes during the exposure. It is capped
+        at the number of differences. Default is 5.
 
     Returns
     -------
     mask : ndarray
-        Bitmask of shape ``(ngroups, ny, nx)``, set to ``CR`` for the groups
-        affected by a jump.
+        Bitmask of shape ``(ngroups, ny, nx)``, set to ``CR`` on the groups
+        where a jump appears.
     data : ndarray
-        Datacube, corrected if ``inpaint`` is True.
+        Datacube as float32, with the jumps removed if ``inpaint`` is True,
+        unchanged otherwise.
+
+    Warns
+    -----
+    UserWarning
+        If the ramp has fewer than 3 group differences. No jump is then
+        searched for, and ``data`` is returned unchanged.
+
+    Notes
+    -----
+    - Only positive jumps are flagged.
+    - Group 0 is never flagged: there is no difference to test before the
+      first read.
+    - Pixels whose residuals have zero scatter (e.g. noise-free data) emit
+      division RuntimeWarnings; any non-zero positive residual is then
+      flagged.
 
     See Also
     --------
-    get_window
+    scipy.ndimage.median_filter
     """
-    from astropy.stats import sigma_clip 
-    
+    from scipy.ndimage import median_filter
+    from scipy.stats import median_abs_deviation
+
+    data = np.asarray(data, dtype="float32")
     mask = np.zeros(data.shape, dtype=_MASK_DTYPE)
-    
-    diff_data = np.diff(data, axis=0)
 
-    zscore, med = get_window(diff_data, stat_func='median', window_length=5, min_count=1, axis=0)
-    cr = zscore >= cr_threshold_mad
-    
-    if inpaint :
-         diff_data = diff_data.copy()
-         diff_data[cr] = med[cr]
-         data = np.cumsum(np.append(data[0][None,:,:], diff_data, axis=0), axis=0)
+    # difference image.
+    diff = np.diff(data, axis=0)
 
-    mask_frame0 = sigma_clip(data[0], 
-                             cenfunc='median', 
-                             stdfunc='mad_std', 
-                             sigma_lower=100000, 
-                             sigma_upper=cr_threshold_mad)
-    
-    mask[np.append(mask_frame0.mask[None,:,:] , cr, axis=0)] = _BITFLAGS_DICT['CR']    
-    
-    return mask, data
-        
+    if diff.shape[0] < 3:
+        warnings.warn("Fewer than 3 group differ")
+        return mask, data
+
+    # Centred moving median of the neighbours, excluding the tested difference.
+    # => using scipy median_filter
+    window_length = min(window_length, diff.shape[0])
+    footprint = np.ones(2 * window_length + 1, dtype=bool) # all true...
+    footprint[window_length] = False                       # ... except when it is false
+    footprint = footprint.reshape((-1,) + (1,) * (diff.ndim - 1))
+    # note: (`np.pad(..., mode="reflect")` in NumPy is what SciPy calls `mode="mirror"`;
+    reference = median_filter(diff, footprint=footprint, mode="mirror")
+
+    # cosmic score based on residual vs nmad.
+    residual = diff - reference
+    scale = median_abs_deviation(residual, axis=0, scale="normal")
+
+    # Next solves the problem of staturation in group not caused by cosmics
+    # saturated is the format (ngroups, ny, nx) boolean and computed only if corr_saturation=True
+    valid = True
+    if saturated is not None:
+        saturated = np.broadcast_to(np.asarray(saturated, dtype=bool), data.shape)
+        # first test which should be ignored.
+        valid = ~(saturated[1:] | saturated[:-1])            # both groups of a difference must be valid
+        # which pixel are affected (2d image)
+        affected = ~valid.all(axis=0)
+        # This steps flatten the pixel axes (not the group.)
+        diff_nan = np.where(valid[:, affected], diff[:, affected], np.nan)
+        ref_nan = _nan_reference(diff_nan, window_length)
+        res_nan = diff_nan - ref_nan
+        reference[:, affected] = np.where(np.isnan(ref_nan), diff[:, affected], ref_nan)
+        residual[:, affected] = res_nan
+        scale[affected] = median_abs_deviation(res_nan, axis=0, scale="normal", nan_policy="omit")
+
+        min_valid = min(min_valid, diff.shape[0])
+        scale = np.where(valid.sum(axis=0) >= min_valid, scale, np.nan)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        zscore = residual / scale
+
+    cr = (zscore >= cr_threshold_mad) & valid
+    # [1:] because we did a diff
+    mask[1:][cr] = _BITFLAGS_DICT["CR"]
+
+    if inpaint and cr.any():
+        diff = np.where(cr, reference, diff)
+        data = np.cumsum(np.concatenate([data[:1], diff], axis=0), axis=0)
+
+    return mask, data.astype("float32")
+
+
 def detect_hotpix(dark_slope, warm_threshold=0.15, hot_threshold=0.5):
     """Detect hot and warm pixels from a dark slope.
 
@@ -323,10 +349,10 @@ def detect_hotpix(dark_slope, warm_threshold=0.15, hot_threshold=0.5):
     """
 
     mask = np.zeros(dark_slope.shape, _MASK_DTYPE)
-    mask[(dark_slope >= warm_threshold) & (dark_slope <hot_threshold )] += _BITFLAGS_DICT['WARM']
-    mask[(dark_slope >= hot_threshold)] += _BITFLAGS_DICT['HOT']
+    mask[(dark_slope >= warm_threshold) & (dark_slope < hot_threshold )] |= _BITFLAGS_DICT['WARM']
+    mask[(dark_slope >= hot_threshold)] |= _BITFLAGS_DICT['HOT']
 
-    return mask 
+    return mask
 
 def detect_rc(data):
     """Detect RC pixels in dark data.
@@ -346,71 +372,9 @@ def detect_rc(data):
     Not implemented yet: currently returns None. The intended strategy is
     a selection on the fit quality of a stack of dark ramps.
     """
-    
-    # Strategy :  
+
+    # Strategy :
     # From stack of ramp data & slope
     # QF based selection.
-    # Will see how this goes. 
+    # Will see how this goes.
     pass
-
-
-# Deprecated cosmics detection.
-def get_cosmics_dep(data, to_mask=None, cr_threshold_mad=9, cr_threshold_std=5):
-    """Detect jumps (cosmic rays) in a ramp (deprecated).
-
-    Deprecated, use `get_cosmics` instead.
-
-    Parameters
-    ----------
-    data : ndarray
-        Datacube of shape ``(ngroups, ny, nx)``.
-    to_mask : ndarray, optional
-        Boolean mask of the values to ignore, with the shape of ``data``.
-        Default is None.
-    cr_threshold_mad : float, optional
-        Detection threshold in units of the normalized median absolute
-        deviation. Default is 9.
-    cr_threshold_std : float, optional
-        Detection threshold in units of the standard deviation. Default
-        is 5.
-
-    Returns
-    -------
-    ndarray
-        Bitmask of shape ``(ngroups, ny, nx)``, set to ``CR`` for the groups
-        affected by a jump.
-
-    See Also
-    --------
-    get_cosmics
-    get_zscores
-    """
-    from astropy.stats import sigma_clip 
-
-    mask = np.zeros(data.shape, dtype=_MASK_DTYPE)
-
-    if to_mask is None : 
-        zscore = get_zscores(np.diff(data, axis=0), 
-                             threshold_mad=cr_threshold_mad, 
-                             threshold_std=cr_threshold_std)
-   
-    else : 
-        data = np.ma.masked_where(to_mask, data) #Create masked array for easy diff
-
-        # Then convert to NaN because faster than using the masked array itself (x2).
-        zscore = get_zscores(np.ma.diff(data, axis=0).filled(fill_value=np.nan), 
-                             threshold_mad=cr_threshold_mad, 
-                             threshold_std=cr_threshold_std)
-
-        zscore = zscore & ~to_mask[1:]
-        
-    # Special treatment for first frame.
-    mask_frame0 = sigma_clip(data[0], 
-                             cenfunc='median', 
-                             stdfunc='mad_std', 
-                             sigma_lower=100000, 
-                             sigma_upper=cr_threshold_mad)
-    
-    mask[np.concatenate([ mask_frame0.mask[None,:] , zscore], axis=0)] = _BITFLAGS_DICT['CR']    
-    return mask 
-

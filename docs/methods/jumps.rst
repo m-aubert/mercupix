@@ -105,6 +105,4 @@ API
    :nosignatures:
 
    ~mask.get_cosmics
-   ~mask.get_window
    ~fitter.Brandt2024
-   ~mask.get_cosmics_dep

@@ -108,6 +108,17 @@ Characterization
    ~carac.get_readout_sequence
    ~calib.PersistenceModel
 
+Simulation
+----------
+
+Mock ramps with a known truth, for tests and examples.
+
+.. autosummary::
+   :nosignatures:
+
+   ~mock.mock_ramps
+   ~mock.mock_times
+
 .. toctree::
    :hidden:
 

@@ -6,7 +6,9 @@ Available fitters are registered in ``model_register``:
 - ``'Kubik'``: `Kubik2015`, group-difference estimator,
 - ``'Brandt'``: `Brandt2024`, optimal fit with jump detection.
 
-All fitters return a `RampFitResults` instance.
+All fitters return a `RampFitResults` instance, whose ``slope`` is the
+flux: the slope of the fitted ramp at ``t = 0``, in ADU per unit of the
+group times (ADU/s when times are in seconds).
 """
 import numpy as np
 import warnings
@@ -50,12 +52,14 @@ def fit_ramp(rawramp,  method='LSQ',
     Returns
     -------
     RampFitResults
-        Result of the fit.
+        Result of the fit; ``slope`` is the flux, in ADU per unit of
+        ``rawramp.times``.
 
     Raises
     ------
     KeyError
-        If ``method`` is not a registered fitter.
+        If ``method`` is not a registered fitter. A `KeyError` raised while
+        preprocessing the ramp is reported the same way.
     """
     try :
         fitter = model_register[method].from_rawramp(rawramp,
@@ -71,7 +75,7 @@ def fit_ramp(rawramp,  method='LSQ',
 
 
 ## General Fitter level
-class Fitter():
+class Fitter:
     """Base class of the ramp fitters.
 
     Parameters
@@ -87,10 +91,12 @@ class Fitter():
     def __init__(self, data, mask=None, times=None):
         self._data = data
         self._mask = mask
+
         if times is None:
             self._times = np.arange(data.shape[0])
-        else :
+        else:
             self._times = times
+
 
     @classmethod
     def from_rawramp(cls, rawramp, ramp_kwargs=dict(), **kwargs):
@@ -114,6 +120,10 @@ class Fitter():
         datacube, varcube, mask = rawramp.preprocess_ramp(**ramp_kwargs)
         return cls(data=datacube, times=rawramp.times, mask=mask, **kwargs)
 
+
+    # ---------- #
+    #  GETTER    #
+    # ---------- #
     def get_model(self, pixels=None, coefs=None):
         """Evaluate the ramp model.
 
@@ -127,10 +137,16 @@ class Fitter():
 
         Returns
         -------
-        ndarray or None
-            Ramp model. None in the base class.
+        ndarray
+            Ramp model, implemented by the subclasses.
+
+        Raises
+        ------
+        NotImplementedError
+            In the base class.
         """
-        return None
+        raise NotImplementedError("get_model is not implemented in the base class")
+
 
     def get_residuals(self, data=None, pixels=None, coefs=None, model=None):
         """Compute the residuals between the data and the ramp model.
@@ -145,9 +161,10 @@ class Fitter():
             residuals of all pixels are returned. Default is None.
         coefs : ndarray, optional
             Model coefficients, passed to `get_model`. Default is None.
+            Ignored if the model is given.
         model : ndarray, optional
-            Ramp model. If None, it is computed with `get_model`. Default
-            is None.
+            Ramp model. If None, it is computed with `get_model`; if given,
+            ``coefs`` is ignored (with a warning). Default is None.
 
         Returns
         -------
@@ -156,6 +173,8 @@ class Fitter():
         """
         if model is None:
             model = self.get_model(pixels=pixels, coefs=coefs)
+        elif coefs is not None:
+            warnings.warn("coefs is ignored as model is given")
 
         if data is None :
             data = self.data
@@ -180,10 +199,15 @@ class Fitter():
 
         Returns
         -------
-        RampFitResults or None
-            Result of the fit. None in the base class.
+        RampFitResults
+            Result of the fit, implemented by the subclasses.
+
+        Raises
+        ------
+        NotImplementedError
+            In the base class.
         """
-        return None
+        raise NotImplementedError("fit is not implemented in the base class")
 
     # ================ #
     #   properties     #
@@ -206,7 +230,11 @@ class Fitter():
 
         return self._hcached_fitted_times
 
-
+# ===================== #
+#                       #
+#     FITTING CLASSES   #
+#                       #
+# ===================== #
 class LSQFit(Fitter):
     """Polynomial least-squares ramp fitter.
 
@@ -214,26 +242,45 @@ class LSQFit(Fitter):
     Legendre and Hermite polynomials, the times are rescaled to ``[-1, 1]``
     with ``t = 0`` mapped to -1.
 
+    The flux (``slope`` of the result) is the derivative of the **full**
+    fitted polynomial at ``t = 0``, and the ``offset`` its value at ``t = 0``.
+    With ``degree >= 2`` the polynomial follows the curvature of the ramp
+    (e.g. classical non-linearity), so the flux is not biased by it. Since
+    ``t = 0`` is before the first read, these are extrapolations: their
+    scatter grows with the degree (about 2.5 times the degree-1 scatter at
+    degree 2, 10 times at degree 5).
+
     Parameters
     ----------
     data : ndarray
-        Datacube of shape ``(ngroups, ny, nx)`` to fit.
-    times : ndarray, optional
-        Time of each group, of shape ``(ngroups,)``. Default is None.
+        Datacube of shape ``(ngroups, ...)`` to fit, e.g.
+        ``(ngroups, ny, nx)``, ``(ngroups, npix)`` or a single ramp
+        ``(ngroups,)``.
+    times : ndarray
+        Time of each group, of shape ``(ngroups,)``. Must be given: None is
+        not supported.
     mask : ndarray, optional
         Data quality bitmask of ``data``. Unused. Default is None.
     degree : int, optional
         Degree of the polynomial. Default is 5.
     polytype : str, optional
         Polynomial basis: ``'leg'``/``'legendre'``, ``'herm'``/``'hermite'``
-        or ``'mono'``/``'monomial'``. Default is ``'leg'``.
-    """
-    def __init__(self, data, times=None, mask=None, #Adding mask for now. Will see later how to use it.
-                 degree=5, polytype='leg'):
-        super().__init__(data, times=times)
+        (probabilists' Hermite polynomials) or ``'mono'``/``'monomial'``
+        (powers of the raw times). Default is ``'leg'``.
 
+    See Also
+    --------
+    get_slope_and_offset
+    """
+    #Adding mask for now. Will see later how to use it.
+    def __init__(self, data, times=None, mask=None,
+                 degree=5, polytype='leg'):
+        super().__init__(data, mask=mask, times=None)
+
+        # force timing format
         self.set_times(times)
-        self.set_polynome(polytype=polytype, degree=degree)
+        self.set_polynome(degree=degree, polytype=polytype)
+
 
     # ================ #
     #   method         #
@@ -261,6 +308,7 @@ class LSQFit(Fitter):
                          }
         self._hcached_fitted_times = None
 
+
     def set_times(self, times):
         """Set the group times and reset the cached fitted times.
 
@@ -271,6 +319,7 @@ class LSQFit(Fitter):
         """
         self._times = np.asarray(times, dtype="float32")
         self._hcached_fitted_times = None
+
 
     # ------- #
     # GETTER  #
@@ -300,6 +349,7 @@ class LSQFit(Fitter):
 
         return self._times_to_polynomex(times=self.times, polytype=polytype)
 
+
     def _fit(self, data=None, inplace=False):
         """Fit the polynomial coefficients.
 
@@ -326,7 +376,7 @@ class LSQFit(Fitter):
 
         return coefs
 
-    def fit(self, data=None, inplace=False):
+    def fit(self, data=None, inplace=True):
         """Fit the ramp.
 
         Parameters
@@ -334,22 +384,106 @@ class LSQFit(Fitter):
         data : ndarray, optional
             Datacube to fit. If None, ``data`` is used. Default is None.
         inplace : bool, optional
-            Whether to store the coefficients in `polynome_coefs`. Default
-            is False.
+            Whether to store the coefficients in `polynome_coefs`, needed by
+            `get_model` and `get_residuals`. Default is True.
 
         Returns
         -------
         RampFitResults
-            Result with the ``slope``, ``offset`` and ``nl`` (higher order
-            coefficients), in ADU.
+            Result with ``slope``, the flux (derivative of the fitted
+            polynomial at ``t = 0``, in ADU per unit of `times`), and
+            ``offset``, the value of the fitted polynomial at ``t = 0``
+            (ADU). ``nl`` is None.
+
+        See Also
+        --------
+        get_slope_and_offset
         """
         coefs = self._fit(data=data, inplace=inplace)
-        offset, slope, nl = self.parse_coefs(coefs=coefs,in_adu=True)
+        slope, offset = self.get_slope_and_offset(coefs=coefs)
 
-        result = RampFitResults(slope=slope,
-                       offset=offset,
-                       nl=nl)
-        return result
+        return RampFitResults(slope=slope, offset=offset, nl=None)
+
+
+    def get_slope_and_offset(self, coefs=None):
+        """Get the flux and offset of the fitted ramps at ``t = 0``.
+
+        The full polynomial is evaluated at ``t = 0`` (``x = -1`` for the
+        Legendre and Hermite bases), with all its coefficients, so that the
+        curvature of the ramp does not bias the flux.
+
+        Parameters
+        ----------
+        coefs : ndarray, optional
+            Polynomial coefficients of shape ``(degree + 1, ...)``. If None,
+            `polynome_coefs` is used. Default is None.
+
+        Returns
+        -------
+        slope : ndarray
+            Flux: derivative of the polynomial at ``t = 0``, in ADU per unit
+            of `times`, of shape ``coefs.shape[1:]``.
+        offset : ndarray
+            Value of the polynomial at ``t = 0``, in ADU.
+
+        Raises
+        ------
+        ValueError
+            If no coefficients are given nor stored.
+        """
+        if coefs is None:
+            if self.polynome_coefs is None:
+                raise ValueError("no coefs given, none stored.")
+
+            coefs = self.polynome_coefs
+
+        tmax = float(np.max(self.times))
+        return self._slope_and_offset_from_coefs(coefs, tmax=tmax, polytype=self.polynome_type)
+
+    @staticmethod
+    def _slope_and_offset_from_coefs(coefs, tmax, polytype):
+        """Evaluate a polynomial and its derivative at ``t = 0``.
+
+        Parameters
+        ----------
+        coefs : ndarray
+            Polynomial coefficients, along axis 0.
+        tmax : float
+            Last group time, used to convert the derivative with respect to
+            the rescaled time ``x = 2 t / tmax - 1`` into a derivative with
+            respect to ``t``.
+        polytype : str
+            Polynomial basis, see `LSQFit`.
+
+        Returns
+        -------
+        slope : ndarray
+            Derivative at ``t = 0``.
+        offset : ndarray
+            Value at ``t = 0``.
+
+        Raises
+        ------
+        NotImplementedError
+            If ``polytype`` is unknown.
+        """
+        if polytype.lower() in ["leg", "legendre"]:
+            from numpy.polynomial import legendre
+            offset = legendre.legval(-1., coefs)                        # m(t = 0)
+            slope = legendre.legval(-1., legendre.legder(coefs)) * 2 / tmax    # dm/dt (t = 0)
+
+        elif  polytype.lower() in ["herm", "hermite"]:
+            from numpy.polynomial import hermite_e
+            offset = hermite_e.hermeval(-1., coefs)                                  # m(t = 0)
+            slope = hermite_e.hermeval(-1., hermite_e.hermeder(coefs)) * 2 / tmax    # dm/dt (t = 0)
+        elif polytype in ["mono", "monomial"]:
+            offset, slope = coefs[0], coefs[1]          # raw times: already the value and slope at t = 0
+        else:
+            raise NotImplementedError(f"Unknown {polytype=} (legendre or hermite implemented)")
+
+        return slope, offset
+
+
 
     def scan_fit(self, data=None, progress_bar=False,
                      frame_range=[4, None],
@@ -388,17 +522,15 @@ class LSQFit(Fitter):
             data = self.data
 
         if x_range is not None:
-            print("x_range")
             data = data[:, :, x_range[0]:x_range[1]]
 
         if y_range is not None:
-            print("y_range")
             data = data[:, y_range[0]:y_range[1], :]
 
         # parse input
         firstframe, lastframe = frame_range
         if firstframe is None:
-            firstframe = self.polynome_degree+1
+            firstframe = self.polynome_degree + 1
 
         elif firstframe < self.polynome_degree:
             warnings.warn("firstframe is lower than the number of degree. Issues are expected.")
@@ -425,6 +557,7 @@ class LSQFit(Fitter):
             times.append( this_times.max() )
 
         return xframes, np.asarray(times), np.asarray(coefs)
+
 
     def get_model(self, pixels=None, coefs=None):
         """Evaluate the polynomial ramp model.
@@ -455,8 +588,15 @@ class LSQFit(Fitter):
 
         return model
 
+
+
     def parse_coefs(self, coefs=None, times=None, axis=None, in_adu=False):
         """Split the polynomial coefficients into offset, slope and higher orders.
+
+        .. deprecated:: 0.2.1
+            Use `get_slope_and_offset`. With ``in_adu=True``, the offset
+            (``c0 - c1``) and slope (``2 c1 / tmax``) returned here are only
+            correct for degree 1: they ignore the higher-order terms.
 
         Parameters
         ----------
@@ -488,6 +628,8 @@ class LSQFit(Fitter):
             If no coefficients are given nor stored, or if the degree axis
             cannot be determined.
         """
+        warnings.warn("parse_coefs is deprecated, use get_slope_and_offset instead", DeprecationWarning)
+
         if coefs is None:
             if self.polynome_coefs is None:
                 raise ValueError("no coefs given, none stored.")
@@ -704,11 +846,13 @@ class Brandt2024(Fitter):
         Datacube of resultants, of shape ``(ngroups, ny, nx)``.
     times : ndarray
         End time of each resultant, of shape ``(ngroups,)``.
-    mask : ndarray, optional
-        Data quality bitmask with the shape of ``data``. Differences
-        involving a flagged resultant are ignored. Default is None.
     readnoise : float or ndarray, optional
-        Read noise of a single read, in ADU. Default is 11.
+        Read noise of a single read, in ADU. If None, 11 ADU is used and a
+        warning is issued. Default is None.
+    mask : ndarray, optional
+        Data quality bitmask with the shape of ``data`` (one mask per
+        group). Differences involving a flagged resultant are ignored.
+        Default is None.
     timeframe : float, optional
         Unused. Default is None.
     countrateguess : ndarray, optional
@@ -754,9 +898,13 @@ class Brandt2024(Fitter):
     .. [2] Brandt, T. D. 2024, "Likelihood-based Jump Detection and Cosmic
        Ray Rejection for Detectors Read Out Up-the-Ramp", PASP, 136, 045005.
     """
-    def __init__(self, data, times=None, mask=None, readnoise=11, timeframe=None,
-                 countrateguess=None, reset=False, nframes_list = [], rescale=True):
-
+    def __init__(self, data, times, readnoise=None,
+                    mask=None, timeframe=None,
+                    countrateguess=None, reset=False, nframes_list=[],
+                    rescale=True):
+        if readnoise is None:
+            warnings.warn("No readnoise given, using 11 ADU. Explicitly set it to silent this warning.")
+            readnoise = 11.
 
         self.frame_shape = data.shape[1:]
         self.readnoise = np.atleast_1d(readnoise)
@@ -778,8 +926,11 @@ class Brandt2024(Fitter):
                 if ni > 1 :
                     # Reverse engineer the time of each read.
                     # Assumes to be even.
-                    tk = np.linspace(times[i-1], times[i], num=ni+1)[1:]
-                    mean_ti = np.linspace(times[i-1], times[i], num=ni+1)[1:].mean()
+                    t_start = times[i-1] if i > 0 else 0. # assuming starts at 0.
+                    tk = np.linspace(t_start, times[i], num=ni+1)[1:]
+                    mean_ti = tk.mean()
+                    #tk = np.linspace(times[i-1], times[i], num=ni+1)[1:]
+                    #mean_ti = np.linspace(times[i-1], times[i], num=ni+1)[1:].mean()
                     mean_t.append(mean_ti)
                 else :
                     # Some resultant can still be only 1 frame.
@@ -1567,19 +1718,33 @@ class Brandt2024(Fitter):
 class Kubik2015(Fitter):
     """Flux estimator from group differences (Kubik et al. 2016).
 
+    The flux is estimated from the second moment of the group differences,
+    assuming a linear ramp with Poisson and read noise. By default `fit`
+    returns it in ADU per unit of ``times``, like the other fitters.
+
     Parameters
     ----------
     data : ndarray
         Datacube of shape ``(ngroups, ny, nx)``.
-    times : ndarray, optional
-        Time of each group, of shape ``(ngroups,)``. Default is None.
+    times : ndarray
+        Time of each group, of shape ``(ngroups,)``. Must be given: the
+        mean time between groups converts the flux per group into a flux
+        per unit of time.
     macc : tuple of int, optional
         MACC readout mode ``(ngroups, nframes, ndrops)``. If None, each
         group is a single frame with no dropped frames. Default is None.
+    mask : ndarray, optional
+        Data quality bitmask of ``data``. Stored but not used. Default is
+        None.
     """
-    def __init__(self, data, times=None, macc=None):
+    def __init__(self, data, times=None, macc=None, mask=None):
+        # super to support basic functionalities.
+        super().__init__(data=data, times=times, mask=mask)
+
+        # needs specific to Kubik implementation.
         self.diff = np.diff(data, axis=0)
         self.tpf = np.diff(times).mean() #Time/frame.
+
         if macc is not None :
             self.ng, self.nf, self.nd = macc
         else :
@@ -1608,8 +1773,7 @@ class Kubik2015(Fitter):
         xi = (1+self.alpha)/2.
         beta = 2*sigma_r**2 / (1+self.alpha)
         m2 = np.sum( (self.diff + beta)**2, axis=0) / (self.ng-1)
-
-        return np.sqrt(xi**2 + m2 - xi - beta)
+        return np.sqrt(xi**2 + m2) - xi - beta
 
     def estim_sigf(self,sigma_r, fe):
         """Estimate the variance of the flux.
@@ -1635,7 +1799,7 @@ class Kubik2015(Fitter):
 
         return term
 
-    def fit(self, readnoise=10, fe=1, inplace=True):
+    def fit(self, readnoise=10, fe=1, inplace=True, per_second=True):
         """Fit the ramp.
 
         Parameters
@@ -1645,23 +1809,42 @@ class Kubik2015(Fitter):
         fe : float or ndarray, optional
             Gain, average or per pixel. Default is 1.
         inplace : bool, optional
-            Unused; the result is always stored in ``self.result``. Default
-            is True.
+            Unused; the result is always stored in ``self.result``.
+            Default is True.
+        per_second : bool, optional
+            Whether to return the flux in ADU per unit of `times` (the flux
+            per group divided by the mean time between groups, and its
+            variance by the square of that time), like the other fitters.
+            If False, the flux is per group interval. Default is True.
 
         Returns
         -------
         RampFitResults
-            Result with the ``slope`` and ``var``.
+            Result with the flux ``slope`` and its variance ``var``.
+
+        Notes
+        -----
+        ``var`` comes from `estim_sigf`. It matches the measured scatter of
+        the flux when photon noise dominates, but overestimates it when read
+        noise matters (by ~1.7x at 100 ADU/s with 10 ADU of read noise, and
+        ~20x at 1 ADU/s).
         """
         slope = self.estim_f(sigma_r=readnoise)
-        err = self.estim_sigf(readnoise, fe)
+        var = self.estim_sigf(readnoise, fe) # returns the variance
 
-        self.result = RampFitResults(slope=slope, var=err)
+        if per_second:
+            slope = slope / self.tpf
+            var = var / self.tpf**2
 
+        self.result = RampFitResults(slope=slope, var=var)
         return self.result
+
 
     def get_model(self, pixels=None, coefs=None):
         """Evaluate the linear ramp model ``slope * t``.
+
+        The model has no offset (`Kubik2015` does not estimate one), so the
+        residuals of `get_residuals` include the offset of the data.
 
         Parameters
         ----------
@@ -1669,8 +1852,9 @@ class Kubik2015(Fitter):
             Indices ``(i, j)`` along the two spatial axes. If None, the
             model of all pixels is returned. Default is None.
         coefs : ndarray, optional
-            Slope. If None, the slope of the stored result is used. Default
-            is None.
+            Slope, in the units of the stored result (flux per unit of
+            `times` with the default ``per_second=True``). If None, the
+            slope of the stored result is used. Default is None.
 
         Returns
         -------
@@ -1691,7 +1875,7 @@ class Kubik2015(Fitter):
         return model
 
 
-class RampFitResults():
+class RampFitResults:
     """Container of the outputs of a ramp fit.
 
     Parameters

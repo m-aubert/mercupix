@@ -114,10 +114,10 @@ def train_sirs(ramp_list, refpix=4,  nroh=12, detector_freq=200_000, njobs=5, de
         rampdata = get_data_with_ref(rampdata, ramp.data, ramp) #Adding refpix left & right.
         #Fit procedure
         fitter = LSQFit(data=rampdata, times=ramp.times, degree=3)
-        coefs = fitter.fit(inplace=False)
-        residuals = fitter.get_residuals(coefs=coefs)
+        fitter._fit(inplace=True)
+        residuals = fitter.get_residuals()
         #Get residuals.
-        del coefs, rampdata
+        del rampdata
 
         # End of standalone.
         if i == 0 :  #could be SIRS class init.
@@ -148,12 +148,12 @@ def train_sirs(ramp_list, refpix=4,  nroh=12, detector_freq=200_000, njobs=5, de
             del result
 
             results += np.asarray(result_).sum(axis=0)
-            offsets += np.asarray(counter_).sum(axis=0)
-            counters += np.asarray(offset_).sum(axis=0)
+            offsets += np.asarray(offset_).sum(axis=0)
+            counters += np.asarray(counter_).sum(axis=0)
 
             del result_, counter_, offset_
 
-        else :
+        else:
             print('Not parallel')
             for i, (frame, good_) in enumerate(zip(residuals, mask)):
                 result  = process_frame(ramp, frame, good_, refpix, fft_basis_ref, pixmask, nroh=nroh)
@@ -438,9 +438,8 @@ def get_sirs_ref(frame, fft_basis, alpha, beta , refpix=4, nroh=7, npix_per_chan
         Reference correction of shape ``(ny, npix_per_channel)``, in readout
         order.
     """
-    alpha = alpha.copy()
-    beta = beta.copy()
-
+    #alpha = alpha.copy()
+    #beta = beta.copy()
     #alpha[0] = 0
     #beta[0] = 0 # Commented for now because it seems that it is better not to set to 0, "smoother PSD profile I guess".
 
