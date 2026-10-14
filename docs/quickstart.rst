@@ -104,7 +104,9 @@ The fitter is chosen by name:
    .. tab-item:: LSQ
       :sync: lsq
 
-      Polynomial least-squares fit, fast and simple.
+      Polynomial least-squares fit, fast and simple. With ``degree=2`` the
+      flux is not biased by a curved ramp (e.g. non-linearity), but it is
+      about 2.5 times noisier than with ``degree=1``.
 
       .. code-block:: python
 

@@ -1,7 +1,8 @@
 Ramp fitting
 ============
 
-A ramp fitter measures the slope of each pixel ramp. All fitters derive from
+A ramp fitter measures the flux of each pixel: the slope of its ramp at
+``t = 0``, in ADU per unit of the group times. All fitters derive from
 `~mercupix.fitter.Fitter`, are registered by name in
 ``mercupix.fitter.model_register``, and return a
 `~mercupix.fitter.RampFitResults`. Swapping methods only changes ``method``
@@ -34,8 +35,9 @@ At a glance
      - Read noise + photon noise, per pixel.
      - Read noise + photon noise.
    * - Ramp shape
-     - Any polynomial degree: absorbs curvature such as residual
-       non-linearity.
+     - Any polynomial degree. The flux is the slope of the full polynomial
+       at ``t = 0``, so with ``degree >= 2`` curvature (e.g. classical
+       non-linearity) does not bias it, at the cost of more noise.
      - Linear.
      - Linear.
    * - Grouped reads (MACC)
@@ -51,18 +53,18 @@ At a glance
      - Yes: masked groups are ignored.
      - No.
    * - Outputs
-     - ``slope``, ``offset``, ``nl``.
+     - ``slope``, ``offset`` (value at ``t = 0``).
      - ``slope``, ``var``, ``qof`` (chi-square), ``mask2d``; ``offset``
        with ``intercept=True``.
-     - ``slope``, ``var``.
+     - ``slope`` (per group interval, not per second), ``var``.
    * - Speed :sup:`1`
      - 9 ms (degree 1), 12 ms (degree 2)
      - 29 ms, 0.5 s with ``jumps=True``
      - —
    * - Status
      - Stable.
-     - Stable.
-     - Experimental: ``fit`` currently fails.
+     - Stable; the ``reset`` and ``intercept=True`` options currently fail.
+     - Experimental: biased, and not usable through ``fit_ramp``.
 
 :sup:`1` 256 x 256 pixels, 30 groups, on a laptop. See
 :doc:`../notebooks/compare_ramp_fitters`.
@@ -91,8 +93,14 @@ Usage
 
       Main options: ``degree`` (polynomial degree, default 5) and
       ``polytype`` (``"legendre"``, ``"hermite"`` or ``"monomial"``).
+      ``times`` must be given. `~mercupix.fitter.LSQFit.get_slope_and_offset`
+      returns the flux and offset at ``t = 0`` from stored coefficients, and
       `~mercupix.fitter.LSQFit.scan_fit` fits the ramp truncated at an
       increasing number of groups.
+
+      The flux at ``t = 0`` is an extrapolation of the polynomial: its scatter
+      is about 2.5 times the degree-1 scatter at degree 2, and 10 times at
+      degree 5. Use the lowest degree that follows your ramps.
 
    .. tab-item:: Brandt2024
       :sync: brandt
@@ -111,7 +119,8 @@ Usage
          result = Brandt2024(data, times=times, readnoise=10).fit(
              jumps=True, jump_threshold=[20, 30])
 
-      Main options: ``readnoise`` (single read, in ADU), ``nframes_list``
+      Main options: ``readnoise`` (single read, in ADU; if not given, 11 ADU
+      is used with a warning), ``nframes_list``
       (frames averaged per group), ``reset`` (first group measured from
       reset), and the ``fit`` arguments ``jumps`` and ``jump_threshold``
       (chi-square improvement needed to drop one or two differences).
@@ -124,13 +133,15 @@ Usage
          from mercupix.fitter import Kubik2015
 
          fitter = Kubik2015(data, times=times, macc=(ngroups, nframes, ndrops))
-         flux = fitter.estim_f(sigma_r=10)      # per group interval
+         result = fitter.fit(readnoise=10)      # flux per group interval
 
       .. warning::
 
-         ``Kubik2015.fit`` and ``fit_ramp(method="Kubik")`` currently fail,
-         and ``estim_f`` returns the flux offset by ``2 * sigma_r**2``. See
-         :doc:`../notebooks/compare_ramp_fitters`.
+         ``fit`` returns the flux per group interval (not per second), offset
+         by ``2 * readnoise**2``: for a true 100 ADU/s with 2.8 s groups and
+         10 ADU of read noise it returns ~480 instead of 280.
+         ``fit_ramp(method="Kubik")`` currently fails (``Kubik2015`` does not
+         accept the ``mask`` passed by ``from_rawramp``).
 
 Which one should I use?
 -----------------------
@@ -138,9 +149,13 @@ Which one should I use?
 - **Science images**: `~mercupix.fitter.Brandt2024`. It is unbiased, has the
   lowest scatter (up to ~8 % lower than ``LSQ`` when photon noise dominates),
   ignores masked groups, and handles cosmic rays itself.
-- **Ramps that are not linear** (e.g. checking a non-linearity correction):
-  `~mercupix.fitter.LSQFit` with ``degree >= 2``. The higher-order
-  coefficients are returned in ``result.nl`` and the residuals are available.
+- **Ramps that are not linear** (no non-linearity correction available, or
+  checking one): `~mercupix.fitter.LSQFit` with ``degree=2``. The flux at
+  ``t = 0`` is then free of the curvature bias, but about 2.5 times noisier
+  than a straight-line fit; `~mercupix.fitter.Fitter.get_residuals` shows
+  what the polynomial does not capture. Linearizing the ramps first
+  (`~mercupix.ramp.RawRamp.correct_nl`) and fitting them with
+  `~mercupix.fitter.Brandt2024` keeps the lower noise.
 - **Quick looks and large batches**: `~mercupix.fitter.LSQFit` with
   ``degree=1``, the fastest. Correct the cosmic rays first.
 
