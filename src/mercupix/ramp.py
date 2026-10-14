@@ -1,7 +1,6 @@
 """Processing of raw up-the-ramp data prior to ramp fitting."""
 import warnings
 import numpy as np
-import skimage as ski
 from .baseramp import BaseRamp
 
 class RawRamp(BaseRamp):
@@ -41,6 +40,25 @@ class RawRamp(BaseRamp):
         # note for letter: we may want it to be a copy.
         return self.data
 
+    def append_refpix_to_data(self, data, method="rawdata"):
+        """ """
+        import numbers
+        # which reference pixels ?
+        if method in ["exact", "rawdata"]:
+            full_with_ref = self.get_rawdata()
+        elif isinstance(method, numbers.Real):
+            full_with_ref = np.ones( self.data.shape ) * method
+        else:
+            raise ValueError(f"method={method} not recognized. Use 'rawdata' or any number.")
+
+        # let's add that to current data.
+        data = np.column_stack([full_with_ref[:, :4, self.actslice],
+                                data,
+                                full_with_ref[:,-4:, self.actslice]])
+        data = np.dstack([full_with_ref[:,:,:4],
+                          data,
+                          full_with_ref[:,:, -4:]])
+        return data
     # ----------- #
     #   GETTER    #
     # ----------- #
@@ -286,6 +304,7 @@ class RawRamp(BaseRamp):
         This is currently the main bottleneck of the pipeline; its cost
         increases with the number of groups.
         """
+        from skimage.restoration import richardson_lucy
         if ipckernel is None :
             ipckernel = np.ones( (1, 5, 5) )
 
@@ -294,16 +313,16 @@ class RawRamp(BaseRamp):
         # float64 to avoid overflow during deconv.
         # Padding to avoid overflow on borders.
         data = np.pad(data.astype('float64'), {1:pad_, 2: pad_}, constant_values=0)
-        data = ski.restoration.richardson_lucy(data,
-                                               ipckernel,
-                                               num_iter=5, #Low iter number otherwise degrade img quality.
-                                               clip=False)
+        data = richardson_lucy(data, ipckernel,
+                                num_iter=5, #Low iter number otherwise degrade img quality.
+                                clip=False)
 
         return data[:, pad_:-pad_, pad_:-pad_].astype(dtype)
 
 
-    def correct_nl(self, data, metadata={},
-                         nl_coefficients=None):
+    def correct_nl(self, data,
+                    metadata={},
+                    nl_coefficients=None):
         """Correct the classical non-linearity.
 
         The linearized data are ``data * (1 + sum_i c_i * data**i)``, with
@@ -363,7 +382,6 @@ class RawRamp(BaseRamp):
         Whether a temporal or per-pixel variance is needed is still to be
         decided.
         """
-
         #Clarifier ce qu'on veut. Variance temporelle ou variance par pixel ?
         var = 0
         if data is not None :

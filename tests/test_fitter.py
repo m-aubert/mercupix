@@ -3,7 +3,7 @@ import pytest
 from numpy.polynomial import polynomial as P
 
 from mercupix.fitter import LSQFit, Kubik2015, Brandt2024
-from mercupix.mock import mock_ramps
+from mercupix.mock import mock_ramps, mock_times
 
 FLUXES = np.array([20., 100., 300., 700.])         # ADU/s, one per row of the mock image
 OFFSET = 1_000.
@@ -220,3 +220,79 @@ def test_kubik_get_model():
     assert model.shape == data.shape
     assert np.allclose(model, kubik.result.slope * times[:, None, None])
     assert np.allclose(kubik.get_residuals(), data - model)
+
+
+# ================================== #
+#  Frame times and skipped frames    #
+# ================================== #
+FRAME_TIMES = [0.5, 1., 2.8, 5., 10., 15.]                   # seconds
+SKIPS = {"no-skip": None,
+         "every-3rd-frame": np.arange(3, 3 * 30, 3),         # frames 3, 6, 9, ... are not read
+         "10-random-frames": 10}                             # 10 frames skipped at random
+SKIP_IDS = list(SKIPS)
+
+
+def frame_mock(frame_time, skip, fluxes=FLUXES, nl_loss=0., npix=1_000, seed=0):
+    """Mock ramps of 30 reads on a frame clock of frame_time seconds, with skipped frames."""
+    times = mock_times(ngroups=30, dt=frame_time, skip=SKIPS[skip], seed=1)
+    _, data = mock_ramps(flux=np.asarray(fluxes)[:, None], shape=(len(fluxes), npix),
+                         times=times, offset=OFFSET, nl_loss=nl_loss, seed=seed)
+    return times, data
+
+
+def test_mock_times():
+    """Read times are multiples of the frame time, skipped frames are not read."""
+    assert mock_times(ngroups=4, dt=0.5).tolist() == [0.5, 1.0, 1.5, 2.0]
+    assert mock_times(ngroups=4, dt=1., skip=[2, 3]).tolist() == [1., 4., 5., 6.]
+    times = mock_times(ngroups=30, dt=15., skip=10, seed=1)
+    gaps = np.diff(times) / 15.
+    assert times.size == 30 and np.allclose(gaps, np.round(gaps)) and gaps.max() > 1
+    assert times[-1] == 15. * 40                          # 30 reads + 10 skipped frames
+
+
+@pytest.mark.parametrize("skip", SKIP_IDS)
+@pytest.mark.parametrize("frame_time", FRAME_TIMES)
+def test_lsqfit_flux_vs_frame_time(frame_time, skip):
+    """LSQFit (degree 1): unbiased flux for any frame time, with or without skipped frames."""
+    times, data = frame_mock(frame_time, skip)
+    res = LSQFit(data, times=times, degree=1).fit()
+    assert_unbiased(res.slope, FLUXES)
+    assert_unbiased(res.offset, OFFSET)
+
+
+@pytest.mark.parametrize("skip", SKIP_IDS)
+@pytest.mark.parametrize("frame_time", FRAME_TIMES)
+def test_lsqfit_nonlinear_flux_vs_frame_time(frame_time, skip):
+    """LSQFit (degree 2) on non-linear ramps: unbiased flux for any frame time and skips.
+
+    The fluxes are scaled with the frame time so that the ramps end at the
+    same signal, below full well, as with the default 2.8 s.
+    """
+    fluxes = FLUXES * 2.8 / frame_time
+    times, data = frame_mock(frame_time, skip, fluxes=fluxes, nl_loss=0.2)
+    res = LSQFit(data, times=times, degree=2).fit()
+    assert_unbiased(res.slope, fluxes)
+    assert_unbiased(res.offset, OFFSET)
+
+
+@pytest.mark.parametrize("skip", SKIP_IDS)
+@pytest.mark.parametrize("frame_time", FRAME_TIMES)
+def test_brandt_flux_vs_frame_time(frame_time, skip):
+    """Brandt2024: unbiased flux for any frame time, with or without skipped frames."""
+    times, data = frame_mock(frame_time, skip)
+    res = Brandt2024(data, times, readnoise=10.).fit()
+    assert_unbiased(res.slope, FLUXES)
+
+
+KUBIK_SKIP_XFAIL = pytest.mark.xfail(strict=True, reason="Kubik2015 assumes equal intervals between "
+                                     "groups: skipped frames bias the flux by ~5-7 %")
+
+
+@pytest.mark.parametrize("skip", [pytest.param(s, marks=KUBIK_SKIP_XFAIL) if s != "no-skip" else s
+                                  for s in SKIP_IDS])
+@pytest.mark.parametrize("frame_time", FRAME_TIMES)
+def test_kubik_flux_vs_frame_time(frame_time, skip):
+    """Kubik2015: unbiased flux for any frame time (regular reads)."""
+    times, data = frame_mock(frame_time, skip)
+    res = Kubik2015(data, times=times).fit(readnoise=10.)
+    assert_unbiased(res.slope, FLUXES)

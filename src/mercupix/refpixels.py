@@ -4,6 +4,7 @@ The correction is split in an up-down part (per-channel offset estimated
 from the top and bottom reference rows) and a left-right part (per-row
 offset estimated from the left and right reference columns).
 """
+import warnings
 import numpy as np
 from scipy.signal import savgol_filter
 

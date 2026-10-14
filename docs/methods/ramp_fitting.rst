@@ -150,6 +150,10 @@ Usage
          noise matters (~1.7x at 100 ADU/s with 10 ADU of read noise, ~20x at
          1 ADU/s). Cosmic rays are not handled and the model has no offset.
 
+See :doc:`ramp_fitting_validation` for how the fitters are tested, including
+frame times from 0.5 to 15 s and skipped frames: `~mercupix.fitter.Kubik2015`
+needs regular reads.
+
 Which one should I use?
 -----------------------
 
