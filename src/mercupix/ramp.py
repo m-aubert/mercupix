@@ -33,13 +33,17 @@ class RawRamp(BaseRamp):
         -----
         Not implemented yet: currently returns None.
         """
-        pass
+        raise NotImplementedError("Metadata extraction from header not implemented yet.")
 
 
     def get_rawdata(self):
         """ explicite raw data function """
+        # note for letter: we may want it to be a copy.
         return self.data
 
+    # ----------- #
+    #   GETTER    #
+    # ----------- #
     def get_mask(self, data=None,
                 disconnected=True,
                 cosmics=False,
@@ -57,12 +61,13 @@ class RawRamp(BaseRamp):
         ----------
         data : ndarray, optional
             Processed datacube of shape ``(ngroups, ny_act, nx_act)`` used
-            for the jump detection. Default is None.
+            for the jump detection (cosmics). Default is None.
+            If data=None and cosmics=True, cosmics will be ignored.
         disconnected : bool, optional
             Whether to flag disconnected (dead) pixels. Default is True.
         cosmics : bool, optional
-            Whether to flag jumps (cosmic rays) in the ramp. Default is
-            False.
+            Whether to flag jumps (cosmic rays) in the ramp.
+            If True, data= is required. Default is False.
         saturated : bool, optional
             Whether to flag saturated pixels. Default is False.
         hot : bool, optional
@@ -144,6 +149,9 @@ class RawRamp(BaseRamp):
 
         return mask, data
 
+    # ----------- #
+    #   CORRECT   #
+    # ----------- #
     def correct_refpix(self, data, **kwargs):
         """Apply the reference pixel correction.
 
@@ -169,6 +177,7 @@ class RawRamp(BaseRamp):
             return data[:, self.actslice, self.actslice] - self.get_refpix_map(**kwargs)
 
         return data - self.get_refpix_map(**kwargs)
+
 
     def subtract_offset(self, data, metadata={}, offset=0):
         """Subtract an offset (bias or superbias) frame or cube.
@@ -237,8 +246,8 @@ class RawRamp(BaseRamp):
 
         return data - darkdata
 
-    def correct_ipc(self, ipckernel=None,
-                        nl=False, metadata={},
+    def correct_ipc(self, data,
+                        ipckernel=None,
                         dtype='float32'):
         """Deconvolve the IPC kernel, frame by frame.
 
@@ -293,8 +302,7 @@ class RawRamp(BaseRamp):
         return data[:, pad_:-pad_, pad_:-pad_].astype(dtype)
 
 
-    def correct_nl(self, data=None,
-                         metadata={},
+    def correct_nl(self, data, metadata={},
                          nl_coefficients=None):
         """Correct the classical non-linearity.
 
@@ -322,10 +330,8 @@ class RawRamp(BaseRamp):
         --------
         mercupix.carac.ClassicalNL.get_nlcorr
         """
-
         if nl_coefficients is None :
             from .io import load_nl_coefficients
-
             nl_coefficients = load_nl_coefficients(path=metadata['nl'])
 
         correction_term = 1
@@ -366,23 +372,24 @@ class RawRamp(BaseRamp):
 
         return var
 
-
-    def preprocess_ramp(self,
-                        data=None,
-                        corr_refpix=True,
-                        corr_ipc=False,
-                        corr_offset=False,
-                        corr_dark=False,
-                        corr_nl=False,
-                        corr_cosmics=False,
-                        mask=False,
-                        comp_var=False,
-                        mask_kwargs={},
-                        metadata={},
-                        nl_coefficients=None,
-                        ipckernel=None,
-                        darkdata=None,
-                        offset=0):
+    #
+    # This is the top level functionality
+    #
+    def preprocess_ramp(self, data=None,
+                            corr_refpix=True,
+                            corr_ipc=False,
+                            corr_offset=False,
+                            corr_dark=False,
+                            corr_nl=False,
+                            corr_cosmics=False,
+                            mask=False,
+                            comp_var=False,
+                            mask_kwargs={},
+                            metadata={},
+                            nl_coefficients=None,
+                            ipckernel=None,
+                            darkdata=None,
+                            offset=0):
         """Apply the corrections required before fitting the ramp.
 
         The corrections are applied in the following order: reference
@@ -438,33 +445,36 @@ class RawRamp(BaseRamp):
             Data quality bitmask from `get_mask`. If ``mask`` is False,
             an array of zeros with the shape of ``datacube``.
         """
-        if corr_refpix :
-            data = self.correct_refpix(data)
+        if data is None:
+            data = self.get_rawdata()
 
-        if data is None :
+        if corr_refpix:
+            # correct refpix includes the reshaping
+            data = self.correct_refpix(data)
+        else:
             data = self.data[:, self.actslice, self.actslice].astype("float32")
 
-        if corr_offset :
+        if corr_offset:
             data = self.subtract_offset(data,
                                         metadata=metadata,
                                         offset=offset) #Basically bias here.
 
-        if corr_nl :
+        if corr_nl:
             data = self.correct_nl(data,
                                     metadata=metadata,
                                     nl_coefficients=nl_coefficients)
 
-        if corr_ipc :
+        if corr_ipc:
             data = self.correct_ipc(data,
-                                     metadata=metadata,
+                                     # metadata=metadata, # no metadata in correct_ipc
                                      ipckernel=ipckernel)
 
-        if corr_dark :
+        if corr_dark:
             data = self.correct_dark(data,
                                      metadata=metadata,
                                      darkdata=darkdata)
 
-        if comp_var :
+        if comp_var:
             varcube = self.get_variance(data=data) # Unclear when and what
         else:
             varcube = 0

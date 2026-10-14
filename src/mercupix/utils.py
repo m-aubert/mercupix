@@ -2,16 +2,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_frame(data, fig=None, ax=None, clim=[1,99], **kwargs):
+def plot_frame(data, ax=None, clim=[1,99], **kwargs):
     """Display a 2D frame with percentile-based color limits.
 
     Parameters
     ----------
     data : ndarray
         2D image of shape ``(ny, nx)`` to display.
-    fig : matplotlib.figure.Figure, optional
-        Figure in which a new axes is created if ``ax`` is None.
-        Default is None.
     ax : matplotlib.axes.Axes, optional
         Axes on which the frame is drawn. If both ``fig`` and ``ax`` are
         None, a new figure and axes are created. Default is None.
@@ -28,18 +25,20 @@ def plot_frame(data, fig=None, ax=None, clim=[1,99], **kwargs):
     ax : matplotlib.axes.Axes
         Axes on which the frame is drawn.
     """
-    if fig is None and ax is None : 
+    if ax is None:
         fig, ax = plt.subplots()
-    if ax is None and fig is not None : 
-        ax = fig.add_subplot()
-    
-    vmin, vmax = np.nanpercentile(data.ravel(), clim)
-            
-    dp = ax.imshow(data, vmin = vmin, vmax=vmax, **kwargs)
-    plt.colorbar(dp, ax=ax, shrink=0.4)
-    return fig, ax
+    else:
+        fig = ax.figure()
 
-def plot_ramp(data, x=None, fig=None, ax=None, **kwargs):
+    vmin, vmax = np.nanpercentile(data.ravel(), clim)
+
+    dp = ax.imshow(data, vmin=vmin, vmax=vmax, **kwargs)
+    fig.colorbar(dp, ax=ax, shrink=0.4)
+
+    return fig
+
+
+def plot_ramp(data, x=None, ax=None, **kwargs):
     """Plot one or several pixel ramps.
 
     Parameters
@@ -49,9 +48,6 @@ def plot_ramp(data, x=None, fig=None, ax=None, **kwargs):
     x : ndarray, optional
         Abscissa of shape ``(ngroups,)``, e.g. the group times. If None,
         the group index is used. Default is None.
-    fig : matplotlib.figure.Figure, optional
-        Figure in which a new axes is created if ``ax`` is None.
-        Default is None.
     ax : matplotlib.axes.Axes, optional
         Axes on which the ramps are drawn. If both ``fig`` and ``ax`` are
         None, a new figure and axes are created. Default is None.
@@ -65,14 +61,14 @@ def plot_ramp(data, x=None, fig=None, ax=None, **kwargs):
     ax : matplotlib.axes.Axes
         Axes on which the ramps are drawn.
     """
-    if fig is None and ax is None : 
+    if ax is None:
         fig, ax = plt.subplots()
-    if ax is None and fig is not None : 
-        ax = fig.add_subplot()
-    
-    if x is None :             
-        ax.plot(data, **kwargs)
-    else : 
-        ax.plot(x,data, **kwargs)
+    else:
+        fig = ax.figure()
 
-    return (fig,ax)
+    if x is None:
+        ax.plot(data, **kwargs)
+    else:
+        ax.plot(x, data, **kwargs)
+
+    return fig
