@@ -160,7 +160,7 @@ class RawRamp(BaseRamp):
             if data is None:
                 warnings.warn("cosmics=True but no data provided, skipping jump detection.")
             else:
-                from .mask import get_cosmics, get_boolmask
+                from .mask import get_cosmics
             
                 sat = sat_mask if saturated else None 
                 maskjump, data = get_cosmics(data=data,

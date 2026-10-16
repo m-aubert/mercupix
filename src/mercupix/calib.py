@@ -43,7 +43,7 @@ def bfe_kernel(values) :
     -----
     Not implemented yet: currently returns None.
     """
-    return None
+    raise NotImplementedError
 
 def ipc_kernel(values, kernel=5,  nl=False) : 
     """Build the IPC kernel from characterization coefficients.
