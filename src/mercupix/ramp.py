@@ -2,6 +2,7 @@
 import warnings
 import numpy as np
 from .baseramp import BaseRamp
+from .mask import _MASK_DTYPE
 
 class RawRamp(BaseRamp):
     """Raw ramp with the corrections applied before ramp fitting.
@@ -159,10 +160,13 @@ class RawRamp(BaseRamp):
             if data is None:
                 warnings.warn("cosmics=True but no data provided, skipping jump detection.")
             else:
-                from .mask import get_cosmics
+                from .mask import get_cosmics, get_boolmask
+            
+                sat = sat_mask if saturated else None 
                 maskjump, data = get_cosmics(data=data,
                                             cr_threshold_mad=cr_threshold_mad,
-                                            inpaint=inpaint)
+                                            inpaint=inpaint,
+                                            saturated=sat)
                 mask = mask | maskjump
 
         return mask, data
@@ -498,20 +502,23 @@ class RawRamp(BaseRamp):
             varcube = 0
 
         # get_mask can correct cosmic ray pixels.
-        if mask and corr_cosmics:
+        if mask:
+            # We don't want to force the cosmics correction always.
             mask, data = self.get_mask(data=data, inpaint=corr_cosmics,
                                        **mask_kwargs)
-        elif corr_cosmics:
+            
+        elif corr_cosmics: 
             from .mask import get_cosmics
             cr_threshold_mad = mask_kwargs.get('cr_threshold_mad', 7)
             _, data = get_cosmics(data=data, inpaint=corr_cosmics,
                                   cr_threshold_mad=cr_threshold_mad)
             # no mask requested
-            mask = np.zeros(data.shape, dtype=np.int8)
+            mask = np.zeros(data.shape, dtype=_MASK_DTYPE)
+                        
         else:
             # cosmic ray removal.
             # no mask requested
-            mask = np.zeros(data.shape, dtype=np.int8)
+            mask = np.zeros(data.shape, dtype=_MASK_DTYPE)
 
         return (data, varcube, mask)
 

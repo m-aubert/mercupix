@@ -8,7 +8,7 @@ Each flag is a power of two, defined in ``_BITFLAGS_DICT``:
 - ``SATURATED`` (4): saturated pixel,
 - ``HOT`` (8): hot pixel,
 - ``WARM`` (16): warm pixel,
-- ``CM`` (32): charge migration or snowball candidate,
+- ``CM`` (32): charge migration or snowball candidate, 
 - ``REF`` (64): reference pixel,
 - ``RC`` (128): RC pixel,
 - ``NL`` (256): non-linearity issue,
@@ -228,6 +228,9 @@ def get_cosmics(data, inpaint=True, cr_threshold_mad=7, window_length=5,
     cr_threshold_mad : float, optional
         Detection threshold, in units of the normalized median absolute
         deviation of the residuals. Default is 7.
+    saturated : ndarray,
+        Saturation bitmask of shape ``(ngroups, ny, nx)``, as returned by
+        `get_saturated`. Any non-zero value is treated as saturated. 
     window_length : int, optional
         Number of differences taken on **each side** of the tested one to
         build its reference level, i.e. a window of ``2 * window_length + 1``
@@ -377,4 +380,5 @@ def detect_rc(data):
     # From stack of ramp data & slope
     # QF based selection.
     # Will see how this goes.
-    pass
+    raise NotImplementedError("Flat-field loading not implemented yet.")
+

@@ -198,7 +198,7 @@ class BaseRamp:
             if not corr_refpix :
                 frame = self.data[frame_num,:,:]
             else :
-                frame = self.correct_refpix()[frame_num,:,:]
+                frame = self.correct_refpix(data=self.data)[frame_num,:,:]
 
         return plot_frame(frame, **kwargs)
 
@@ -239,7 +239,7 @@ class BaseRamp:
             if not corr_refpix :
                 pixramp = self.data[:, pixel_ids[0], pixel_ids[1]]
             else :
-                pixramp = self.correct_refpix()[:, pixel_ids[0], pixel_ids[1]]
+                pixramp = self.correct_refpix(data=self.data)[:, pixel_ids[0], pixel_ids[1]]
 
         pixramp = pixramp.reshape(pixramp.shape[0], -1) if pixramp.ndim > 2 else pixramp
 
